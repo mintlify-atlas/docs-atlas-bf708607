@@ -1,0 +1,130 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "OpenChat Bot SDK",
+  "projectDescription": "A Motoko SDK for building OpenChat bots on the Internet Computer, featuring TallyBot and ProposalBot implementations.",
+  "theme": "aspen",
+  "primaryColor": "#aebd57",
+  "lightColor": "#26272c",
+  "darkColor": "#dbdbdd",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/bot-architecture",
+              "concepts/openchat-integration",
+              "concepts/canister-deployment"
+            ]
+          },
+          {
+            "group": "Bot Implementations",
+            "pages": [
+              "bots/tally-bot",
+              "bots/proposal-bot"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/bot-initialization",
+              "guides/joining-communities",
+              "guides/sending-messages",
+              "guides/managing-subscriptions"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Bot Service",
+            "pages": [
+              "api/bot-service",
+              "api/bot-types"
+            ]
+          },
+          {
+            "group": "OpenChat API",
+            "pages": [
+              "api/oc-service",
+              "api/oc-types",
+              "api/oc-api"
+            ]
+          },
+          {
+            "group": "Governance",
+            "pages": [
+              "api/governance-service",
+              "api/governance-types"
+            ]
+          },
+          {
+            "group": "Proposal Management",
+            "pages": [
+              "api/proposal-service",
+              "api/proposal-types"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/log-service",
+              "api/text-utils",
+              "api/time-service"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "OpenChat bot registration and initialization",
+    "Join groups, communities, and channels with invite codes",
+    "Send and edit messages in groups and channels",
+    "Track NNS governance proposals with TallyBot",
+    "Monitor and broadcast proposal updates with ProposalBot",
+    "Subscription management for tally updates",
+    "Avatar and display name configuration",
+    "Comprehensive logging and metrics",
+    "Custodian-based access control"
+  ],
+  "publicApiSurface": [
+    "BotService.initBot",
+    "BotService.setAvatar",
+    "BotService.joinGroup",
+    "BotService.joinCommunity",
+    "BotService.joinChannel",
+    "BotService.sendGroupMessage",
+    "BotService.sendChannelMessage",
+    "BotService.editGroupMessage",
+    "BotService.editChannelMessage",
+    "TallyBot.addSubscriber",
+    "TallyBot.deleteSubscription",
+    "TallyBot.getSubscribers",
+    "TallyBot.tallyUpdate",
+    "ProposalBot.initTimer",
+    "ProposalBot.cancelTimer",
+    "ProposalBot.addSubscriber",
+    "ProposalBot.deleteSubscriber",
+    "ProposalBot.updateSubscriber",
+    "OCService.registerBot",
+    "OCService.userSummary",
+    "OCService.publicGroupSummary",
+    "OCService.publicCommunitySummary",
+    "LogService.getLogs",
+    "LogService.clearLogs",
+    "getCanisterStatus"
+  ]
+}
