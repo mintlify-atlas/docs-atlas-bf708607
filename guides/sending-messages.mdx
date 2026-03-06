@@ -1,0 +1,508 @@
+---
+title: 'Sending Messages'
+description: 'Send and edit messages in OpenChat groups and channels'
+---
+
+## Overview
+
+Once your bot has joined groups or channels, it can send messages with various content types, reply in threads, and edit existing messages.
+
+<Note>
+  Your bot must be a member of a group or channel before sending messages. See [Joining Communities](/guides/joining-communities) first.
+</Note>
+
+## Message Content Types
+
+OpenChat supports multiple message content types:
+
+```motoko
+// From OCApi.mo:832-848
+public type MessageContentInitial = {
+  #Giphy : GiphyContent;
+  #File : FileContent;
+  #Poll : PollContent;
+  #Text : TextContent;
+  #P2PSwap : P2PSwapContentInitial;
+  #Image : ImageContent;
+  #Prize : PrizeContentInitial;
+  #Custom : CustomMessageContent;
+  #GovernanceProposal : ProposalContent;
+  #Audio : AudioContent;
+  #Crypto : CryptoContent;
+  #Video : VideoContent;
+  #Deleted : DeletedContent;
+  #MessageReminderCreated : MessageReminderCreated;
+  #MessageReminder : MessageReminder;
+};
+```
+
+### Text Messages
+
+The most common message type:
+
+```motoko
+public type TextContent = { text : Text };
+```
+
+### Governance Proposals
+
+For posting NNS or SNS governance proposals:
+
+```motoko
+public type ProposalContent = {
+  my_vote : ?Bool;
+  governance_canister_id : CanisterId;
+  proposal : Proposal;
+};
+
+public type Proposal = {
+  #NNS : NnsProposal;
+  #SNS : SnsProposal;
+};
+```
+
+## Sending Group Messages
+
+Send messages to standalone groups using the group's canister ID.
+
+### Basic Text Message
+
+<Steps>
+  <Step title="Call sendGroupMessage">
+    ```motoko
+    // From BotService.mo:395-452
+    public func sendGroupMessage(
+      groupCanisterId : Text,
+      content : OCApi.MessageContentInitial,
+      threadIndexId : ?Nat32
+    ) : async* Result.Result<SendMessageResponse, Text>{
+      let seed : Nat64 = Nat64.fromIntWrap(Time.now());
+      let rng = Prng.Seiran128();
+      rng.init(seed);
+      let id = Nat64.toNat(rng.next());
+      
+      let res = await* ocService.sendGroupMessage(
+        groupCanisterId,
+        Option.get(botModel.botName, ""),
+        botModel.botDisplayName,
+        content,
+        id,
+        threadIndexId
+      );
+      
+      switch(res){
+        case(#ok(data)){
+          switch(data){
+            case(#Success(response)){
+              #ok(#Success({ response with message_id = id;}))
+            };
+            // ... error cases
+          };
+        };
+        case(#err(msg)){ #err(msg) }
+      }
+    };
+    ```
+  </Step>
+
+  <Step title="Use convenience method for text">
+    ```motoko
+    // From BotService.mo:454-456
+    public func sendTextGroupMessage(
+      groupCanisterId : Text,
+      content : Text,
+      threadIndexId : ?Nat32
+    ) : async* Result.Result<SendMessageResponse, Text>{
+      await* sendGroupMessage(
+        groupCanisterId,
+        #Text({text = content}),
+        threadIndexId
+      );
+    };
+    ```
+  </Step>
+</Steps>
+
+### DFX Example
+
+```bash
+# Send a simple text message to a group
+dfx canister call OCBot sendTextGroupMessage '(
+  "evg6t-laaaa-aaaar-a4j5q-cai",
+  "Hello from my bot!",
+  null
+)' --ic
+```
+
+## Sending Channel Messages
+
+Send messages to channels within communities.
+
+### Basic Channel Message
+
+```motoko
+// From BotService.mo:336-393
+public func sendChannelMessage(
+  communityCanisterId : Text,
+  channelId: Nat,
+  content : OCApi.MessageContent,
+  threadIndexId : ?Nat32
+) : async* Result.Result<SendMessageResponse, Text>{
+  let seed : Nat64 = Nat64.fromIntWrap(Time.now());
+  let rng = Prng.Seiran128();
+  rng.init(seed);
+  let id = Nat64.toNat(rng.next());
+  
+  let res = await* ocService.sendChannelMessage(
+    communityCanisterId,
+    channelId,
+    Option.get(botModel.botName, ""),
+    botModel.botDisplayName,
+    content,
+    id,
+    threadIndexId
+  );
+  
+  switch(res){
+    case(#ok(data)){
+      switch(data){
+        case(#Success(response)){
+          #ok(#Success({ response with message_id = id;}))
+        };
+        case(#ChannelNotFound){ #ok(#ChannelNotFound) };
+        case(#NotAuthorized){ #ok(#NotAuthorized) };
+        case(#UserNotInChannel){ #ok(#UserNotInChannel) };
+        // ... other cases
+      };
+    };
+    case(#err(msg)){ #err(msg) }
+  }
+};
+```
+
+### DFX Example
+
+```bash
+# Send a message to a channel
+dfx canister call OCBot sendChannelMessage '(
+  "uxyan-oyaaa-aaaaf-aaa5q-cai",
+  42,
+  variant { Text = record { text = "Hello channel!" } },
+  null
+)' --ic
+```
+
+## Message ID Management
+
+The SDK generates unique message IDs and allows you to save them for later reference.
+
+### Generating Message IDs
+
+```motoko
+// Message IDs are generated using a random number generator
+let seed : Nat64 = Nat64.fromIntWrap(Time.now());
+let rng = Prng.Seiran128();
+rng.init(seed);
+let id = Nat64.toNat(rng.next());
+```
+
+### Saving Message IDs
+
+```motoko
+// From BotService.mo:556-570
+public func saveMessageId(key : Text, messageid : MessageId) :(){
+  Map.set(botModel.savedMessages, thash, key, messageid);
+};
+
+public func getMessageId(key : Text) : ?MessageId{
+  return Map.get(botModel.savedMessages, thash, key);
+};
+
+public func deleteMessageId(key : Text) :(){
+  Map.delete(botModel.savedMessages, thash, key);
+};
+
+public func deleteAllMessageIds() :(){
+  Map.clear(botModel.savedMessages);
+};
+```
+
+### Practical Usage
+
+```motoko
+// Send a message and save its ID for later editing
+let result = await* botService.sendTextGroupMessage(groupId, "Initial message", null);
+
+switch(result){
+  case(#ok(response)){
+    switch(response){
+      case(#Success(data)){
+        // Save the message ID with a key
+        botService.saveMessageId("my-update-message", data.message_id);
+        logService.logInfo("Message sent: " # Nat.toText(data.message_id), null);
+      };
+      case(_){};
+    };
+  };
+  case(#err(e)){
+    logService.logError("Error: " # e, null);
+  };
+};
+```
+
+## Thread Support
+
+Reply to messages in threads by providing the `threadRootMessageIndex`.
+
+### Sending Thread Replies
+
+```motoko
+// Reply in a thread
+let threadResult = await* botService.sendTextGroupMessage(
+  groupId,
+  "This is a reply in the thread",
+  ?threadRootIndex // The message index of the thread root
+);
+```
+
+### Example from ProposalBot
+
+```motoko
+// From ProposalBot.mo:451-470
+func createProposalGroupThread(targetGroupId : Text, proposal : Proposal) : async* (){
+  let text = TU.formatProposal(proposal.proposalData);
+  let res = await* botService.sendTextGroupMessage(targetGroupId, text, null);
+
+  switch(res){
+    case(#ok(data)){
+      switch(data){
+        case(#Success(d)){
+          // Send a follow-up in the thread
+          let text2 = TU.formatProposalThreadMsg(
+            NNS_PROPOSAL_GROUP_ID,
+            proposal.proposalData.id,
+            proposal.messageIndex
+          );
+          let res = await* botService.sendTextGroupMessage(
+            targetGroupId,
+            text2,
+            ?d.message_index // Reply in thread
+          );
+        };
+        case(_){};
+      };
+    };
+    case(#err(e)){ /* handle error */ }
+  };
+};
+```
+
+## Editing Messages
+
+Modify existing messages using their message ID.
+
+### Edit Group Messages
+
+```motoko
+// From BotService.mo:467-474
+public func editGroupMessage(
+  groupCanisterId : Text,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : OCApi.MessageContentInitial
+) : async* Result.Result<OCApi.EditMessageResponse, Text>{
+  let #ok(res) = await* ocService.editGroupMessage(
+    groupCanisterId,
+    messageId,
+    threadRootIndex,
+    newContent
+  ) else{
+    return #err("Trapped");
+  };
+  #ok(res);
+};
+
+// Convenience method for text
+public func editTextGroupMessage(
+  groupCanisterId : Text,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : Text
+) : async* Result.Result<OCApi.EditMessageResponse, Text>{
+  await* editGroupMessage(
+    groupCanisterId,
+    messageId,
+    threadRootIndex,
+    #Text({text = newContent})
+  );
+};
+```
+
+### Edit Channel Messages
+
+```motoko
+// From BotService.mo:458-465
+public func editChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : OCApi.MessageContentInitial
+) : async* Result.Result<OCApi.EditChannelMessageResponse, Text>{
+  let #ok(res) = await* ocService.editChannelMessage(
+    communityCanisterId,
+    channelId,
+    messageId,
+    threadRootIndex,
+    newContent
+  ) else{
+    return #err("Trapped");
+  };
+  #ok(res);
+};
+```
+
+### Complete Edit Example
+
+```motoko
+// Retrieve saved message ID
+switch(botService.getMessageId("my-update-message")){
+  case(?messageId){
+    // Edit the message
+    let editResult = await* botService.editTextGroupMessage(
+      groupId,
+      messageId,
+      null, // Not in a thread
+      "Updated message content"
+    );
+    
+    switch(editResult){
+      case(#ok(_)){
+        logService.logInfo("Message edited successfully", null);
+      };
+      case(#err(e)){
+        logService.logError("Edit failed: " # e, null);
+      };
+    };
+  };
+  case(null){
+    logService.logError("Message ID not found", null);
+  };
+};
+```
+
+## Error Handling
+
+### Common Response Codes
+
+| Response | Description | Solution |
+|----------|-------------|----------|
+| `#Success` | Message sent successfully | - |
+| `#ChannelNotFound` | Channel doesn't exist | Verify channel ID |
+| `#ThreadMessageNotFound` | Thread root not found | Verify thread index |
+| `#MessageEmpty` | Content is empty | Provide message content |
+| `#TextTooLong` | Message exceeds limit | Shorten message |
+| `#NotAuthorized` | Bot lacks permissions | Check bot role |
+| `#UserNotInChannel` | Bot not a member | Join channel first |
+| `#UserSuspended` | Bot is suspended | Contact admins |
+| `#RulesNotAccepted` | Must accept rules | Accept group rules |
+
+### Robust Error Handling
+
+```motoko
+let result = await* botService.sendChannelMessage(
+  communityId,
+  channelId,
+  #Text({text = message}),
+  null
+);
+
+switch(result){
+  case(#ok(response)){
+    switch(response){
+      case(#Success(data)){
+        // Success - save message ID if needed
+        botService.saveMessageId(key, data.message_id);
+      };
+      case(#UserNotInChannel){
+        // Bot needs to join channel
+        let joinResult = await* botService.joinChannel(communityId, channelId, null);
+        // Retry sending after joining
+      };
+      case(#TextTooLong(maxLen)){
+        logService.logError("Message too long. Max: " # Nat32.toText(maxLen), null);
+      };
+      case(_){
+        logService.logError("Message send failed", null);
+      };
+    };
+  };
+  case(#err(msg)){
+    logService.logError("Error: " # msg, null);
+  };
+};
+```
+
+## TallyBot Example
+
+Here's how TallyBot sends and edits messages for tally updates:
+
+```motoko
+// From TallyBot.mo:283-327
+let msgKey = generateMsgKey(sub, tally.tallyId, ballot.proposalId);
+let textBallot = formatBallot(tally.tallyId, tally.alias, ballot);
+
+switch (botService.getMessageId(msgKey)) {
+  // If message already exists, edit it
+  case (?msgId) {
+    logService.logInfo("Edit tally update", null);
+    let res = await* editMessageToSub(sub, textBallot, msgId, null);
+    
+    // Once tally is complete, delete the saved message ID
+    if (isTallyComplete(ballot)) {
+      botService.deleteMessageId(msgKey);
+    };
+  };
+  // If no message exists, send a new one
+  case (_) {
+    logService.logInfo("Send new tally update", null);
+    let res = await* sendMessageToSub(sub, textBallot, null);
+    
+    // Save message ID for future edits
+    if (not isTallyComplete(ballot)) {
+      switch (res) {
+        case (#ok(v)) {
+          switch (v) {
+            case (#Success(msgData)) {
+              botService.saveMessageId(msgKey, msgData.message_id);
+            };
+            case (_) {};
+          };
+        };
+        case (#err(err)) {
+          logService.logError("Error sending tally update: " # err, null);
+        };
+      };
+    };
+  };
+};
+```
+
+## Best Practices
+
+1. **Save Message IDs** - Always save message IDs when you'll need to edit messages later
+2. **Handle Errors Gracefully** - Check all response variants and handle appropriately
+3. **Use Thread Support** - Keep conversations organized by replying in threads
+4. **Respect Rate Limits** - Don't send too many messages too quickly
+5. **Clean Up** - Delete saved message IDs when messages are finalized
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Manage Subscriptions" icon="bell" href="/guides/managing-subscriptions">
+    Set up subscription systems for your bot
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/bot-service">
+    Explore the complete API
+  </Card>
+</CardGroup>

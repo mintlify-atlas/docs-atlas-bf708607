@@ -1,0 +1,668 @@
+---
+title: 'GovernanceTypes'
+description: 'Type definitions for NNS governance integration'
+---
+
+The `GovernanceTypes` module contains all type definitions used for interacting with Internet Computer governance canisters, including the NNS governance canister. These types are generated Motoko bindings that correspond to the Candid interface of governance canisters.
+
+## Overview
+
+This module provides comprehensive type definitions for:
+- Proposals and proposal filtering
+- Neurons and neuron management
+- Voting and ballot information
+- Governance canister metadata
+- Nervous system functions
+- Network economics parameters
+
+## Core Types
+
+### ProposalInfo
+
+Contains detailed information about a governance proposal.
+
+```motoko
+public type ProposalInfo = {
+    id : ?NeuronId;
+    status : Int32;
+    topic : Int32;
+    failure_reason : ?GovernanceError;
+    ballots : [(Nat64, Ballot)];
+    proposal_timestamp_seconds : Nat64;
+    reward_event_round : Nat64;
+    deadline_timestamp_seconds : ?Nat64;
+    failed_timestamp_seconds : Nat64;
+    reject_cost_e8s : Nat64;
+    derived_proposal_information : ?DerivedProposalInformation;
+    latest_tally : ?Tally;
+    reward_status : Int32;
+    decided_timestamp_seconds : Nat64;
+    proposal : ?Proposal;
+    proposer : ?NeuronId;
+    executed_timestamp_seconds : Nat64;
+};
+```
+
+<ParamField path="id" type="?NeuronId">
+  The unique identifier for this proposal.
+</ParamField>
+
+<ParamField path="status" type="Int32">
+  The current status of the proposal:
+  - `1`: Open (accepting votes)
+  - `2`: Rejected
+  - `3`: Accepted
+  - `4`: Executed
+  - `5`: Failed
+</ParamField>
+
+<ParamField path="topic" type="Int32">
+  The proposal topic/category (e.g., Governance, NetworkEconomics, NodeAdmin).
+</ParamField>
+
+<ParamField path="ballots" type="[(Nat64, Ballot)]">
+  Map of neuron IDs to their votes on this proposal.
+</ParamField>
+
+<ParamField path="proposal_timestamp_seconds" type="Nat64">
+  Unix timestamp when the proposal was created.
+</ParamField>
+
+<ParamField path="latest_tally" type="?Tally">
+  The current vote tally for this proposal.
+</ParamField>
+
+<ParamField path="proposal" type="?Proposal">
+  The actual proposal content including title, summary, and action.
+</ParamField>
+
+<ParamField path="proposer" type="?NeuronId">
+  The neuron ID that submitted this proposal.
+</ParamField>
+
+---
+
+### Proposal
+
+The actual content and action of a governance proposal.
+
+```motoko
+public type Proposal = {
+    url : Text;
+    title : ?Text;
+    action : ?Action;
+    summary : Text;
+};
+```
+
+<ParamField path="url" type="Text">
+  URL with additional information about the proposal.
+</ParamField>
+
+<ParamField path="title" type="?Text">
+  The proposal title.
+</ParamField>
+
+<ParamField path="action" type="?Action">
+  The action to be executed if the proposal passes. See [Action](#action) type.
+</ParamField>
+
+<ParamField path="summary" type="Text">
+  A markdown-formatted summary of the proposal.
+</ParamField>
+
+---
+
+### Action
+
+The action to be executed when a proposal is adopted.
+
+```motoko
+public type Action = {
+    #RegisterKnownNeuron : KnownNeuron;
+    #ManageNeuron : ManageNeuron;
+    #CreateServiceNervousSystem : CreateServiceNervousSystem;
+    #ExecuteNnsFunction : ExecuteNnsFunction;
+    #RewardNodeProvider : RewardNodeProvider;
+    #OpenSnsTokenSwap : OpenSnsTokenSwap;
+    #SetSnsTokenSwapOpenTimeWindow : SetSnsTokenSwapOpenTimeWindow;
+    #SetDefaultFollowees : SetDefaultFollowees;
+    #RewardNodeProviders : RewardNodeProviders;
+    #ManageNetworkEconomics : NetworkEconomics;
+    #ApproveGenesisKyc : ApproveGenesisKyc;
+    #AddOrRemoveNodeProvider : AddOrRemoveNodeProvider;
+    #Motion : Motion;
+};
+```
+
+A variant type representing different governance actions. Common actions include:
+- `Motion`: A motion proposal (non-executable, advisory)
+- `ManageNeuron`: Manage a specific neuron
+- `ExecuteNnsFunction`: Execute an NNS function
+- `ManageNetworkEconomics`: Update network economics parameters
+
+---
+
+### Tally
+
+Vote tallying information for a proposal.
+
+```motoko
+public type Tally = {
+    no : Nat64;
+    yes : Nat64;
+    total : Nat64;
+    timestamp_seconds : Nat64;
+};
+```
+
+<ParamField path="no" type="Nat64">
+  Total voting power that voted against the proposal.
+</ParamField>
+
+<ParamField path="yes" type="Nat64">
+  Total voting power that voted in favor of the proposal.
+</ParamField>
+
+<ParamField path="total" type="Nat64">
+  Total voting power eligible to vote on this proposal.
+</ParamField>
+
+<ParamField path="timestamp_seconds" type="Nat64">
+  Unix timestamp when this tally was calculated.
+</ParamField>
+
+---
+
+### ListProposalInfo
+
+Filter criteria for listing proposals.
+
+```motoko
+public type ListProposalInfo = {
+    include_reward_status : [Int32];
+    omit_large_fields : ?Bool;
+    before_proposal : ?NeuronId;
+    limit : Nat32;
+    exclude_topic : [Int32];
+    include_all_manage_neuron_proposals : ?Bool;
+    include_status : [Int32];
+};
+```
+
+<ParamField path="limit" type="Nat32">
+  Maximum number of proposals to return.
+</ParamField>
+
+<ParamField path="before_proposal" type="?NeuronId">
+  Return proposals created before this proposal ID (for pagination).
+</ParamField>
+
+<ParamField path="include_status" type="[Int32]">
+  Array of proposal status codes to include. Empty array means include all statuses.
+</ParamField>
+
+<ParamField path="include_reward_status" type="[Int32]">
+  Array of reward status codes to include. Empty array means include all reward statuses.
+</ParamField>
+
+<ParamField path="exclude_topic" type="[Int32]">
+  Array of topic IDs to exclude from results.
+</ParamField>
+
+<ParamField path="omit_large_fields" type="?Bool">
+  If true, omits large fields from the response for better performance.
+</ParamField>
+
+<ParamField path="include_all_manage_neuron_proposals" type="?Bool">
+  If true, includes all ManageNeuron proposals (which are normally filtered).
+</ParamField>
+
+---
+
+### ListProposalInfoResponse
+
+Response containing a list of proposals.
+
+```motoko
+public type ListProposalInfoResponse = { 
+    proposal_info : [ProposalInfo] 
+};
+```
+
+<ResponseField name="proposal_info" type="[ProposalInfo]">
+  Array of [ProposalInfo](#proposalinfo) objects matching the filter criteria.
+</ResponseField>
+
+---
+
+## Neuron Types
+
+### NeuronId
+
+Unique identifier for a neuron.
+
+```motoko
+public type NeuronId = { id : Nat64 };
+```
+
+<ParamField path="id" type="Nat64">
+  The numeric identifier for the neuron.
+</ParamField>
+
+---
+
+### Neuron
+
+Complete neuron information.
+
+```motoko
+public type Neuron = {
+    id : ?NeuronId;
+    staked_maturity_e8s_equivalent : ?Nat64;
+    controller : ?Principal;
+    recent_ballots : [BallotInfo];
+    kyc_verified : Bool;
+    neuron_type : ?Int32;
+    not_for_profit : Bool;
+    maturity_e8s_equivalent : Nat64;
+    cached_neuron_stake_e8s : Nat64;
+    created_timestamp_seconds : Nat64;
+    auto_stake_maturity : ?Bool;
+    aging_since_timestamp_seconds : Nat64;
+    hot_keys : [Principal];
+    account : Blob;
+    joined_community_fund_timestamp_seconds : ?Nat64;
+    dissolve_state : ?DissolveState;
+    followees : [(Int32, Followees)];
+    neuron_fees_e8s : Nat64;
+    transfer : ?NeuronStakeTransfer;
+    known_neuron_data : ?KnownNeuronData;
+    spawn_at_timestamp_seconds : ?Nat64;
+};
+```
+
+<ParamField path="id" type="?NeuronId">
+  The unique identifier for this neuron.
+</ParamField>
+
+<ParamField path="controller" type="?Principal">
+  The principal that controls this neuron.
+</ParamField>
+
+<ParamField path="cached_neuron_stake_e8s" type="Nat64">
+  The amount of ICP staked in this neuron (in e8s, where 1 ICP = 100,000,000 e8s).
+</ParamField>
+
+<ParamField path="maturity_e8s_equivalent" type="Nat64">
+  The maturity of this neuron in e8s equivalent.
+</ParamField>
+
+<ParamField path="dissolve_state" type="?DissolveState">
+  The dissolve state of the neuron (dissolving or locked with a delay).
+</ParamField>
+
+<ParamField path="followees" type="[(Int32, Followees)]">
+  Map of topics to the neurons this neuron follows for automatic voting.
+</ParamField>
+
+---
+
+### NeuronInfo
+
+Summary information about a neuron (lighter weight than full Neuron type).
+
+```motoko
+public type NeuronInfo = {
+    dissolve_delay_seconds : Nat64;
+    recent_ballots : [BallotInfo];
+    neuron_type : ?Int32;
+    created_timestamp_seconds : Nat64;
+    state : Int32;
+    stake_e8s : Nat64;
+    joined_community_fund_timestamp_seconds : ?Nat64;
+    retrieved_at_timestamp_seconds : Nat64;
+    known_neuron_data : ?KnownNeuronData;
+    voting_power : Nat64;
+    age_seconds : Nat64;
+};
+```
+
+<ParamField path="stake_e8s" type="Nat64">
+  The amount of ICP staked in this neuron (in e8s).
+</ParamField>
+
+<ParamField path="voting_power" type="Nat64">
+  The voting power of this neuron, including bonuses.
+</ParamField>
+
+<ParamField path="state" type="Int32">
+  The state of the neuron:
+  - `1`: Not dissolving (locked)
+  - `2`: Dissolving
+  - `3`: Dissolved
+</ParamField>
+
+<ParamField path="dissolve_delay_seconds" type="Nat64">
+  The dissolve delay in seconds.
+</ParamField>
+
+<ParamField path="age_seconds" type="Nat64">
+  The age of the neuron in seconds.
+</ParamField>
+
+---
+
+## Voting Types
+
+### Ballot
+
+A vote cast by a neuron on a proposal.
+
+```motoko
+public type Ballot = { 
+    vote : Int32; 
+    voting_power : Nat64 
+};
+```
+
+<ParamField path="vote" type="Int32">
+  The vote value:
+  - `0`: Unspecified (not voted)
+  - `1`: Yes
+  - `2`: No
+</ParamField>
+
+<ParamField path="voting_power" type="Nat64">
+  The voting power used for this vote.
+</ParamField>
+
+---
+
+### BallotInfo
+
+Information about a neuron's vote on a specific proposal.
+
+```motoko
+public type BallotInfo = { 
+    vote : Int32; 
+    proposal_id : ?NeuronId 
+};
+```
+
+<ParamField path="vote" type="Int32">
+  The vote cast (0 = unspecified, 1 = yes, 2 = no).
+</ParamField>
+
+<ParamField path="proposal_id" type="?NeuronId">
+  The ID of the proposal this ballot is for.
+</ParamField>
+
+---
+
+## Nervous System Functions
+
+### NervousSystemFunction
+
+Defines a callable function in a governance canister.
+
+```motoko
+public type NervousSystemFunction = {
+    id : Nat64;
+    name : Text;
+    description : ?Text;
+};
+```
+
+<ParamField path="id" type="Nat64">
+  The unique identifier for this function.
+</ParamField>
+
+<ParamField path="name" type="Text">
+  The name of the function (e.g., "CreateSubnet", "AddNodeToSubnet").
+</ParamField>
+
+<ParamField path="description" type="?Text">
+  Optional description of what this function does.
+</ParamField>
+
+---
+
+### ListNervousSystemFunctionsResponse
+
+Response containing the list of available nervous system functions.
+
+```motoko
+public type ListNervousSystemFunctionsResponse = {
+    reserved_ids : [Nat64];
+    functions : [NervousSystemFunction];
+};
+```
+
+<ResponseField name="functions" type="[NervousSystemFunction]">
+  Array of available nervous system functions.
+</ResponseField>
+
+<ResponseField name="reserved_ids" type="[Nat64]">
+  Array of function IDs that are reserved and cannot be used for custom functions.
+</ResponseField>
+
+---
+
+## Error Types
+
+### GovernanceError
+
+Error information returned by governance operations.
+
+```motoko
+public type GovernanceError = { 
+    error_message : Text; 
+    error_type : Int32 
+};
+```
+
+<ParamField path="error_message" type="Text">
+  Human-readable error message.
+</ParamField>
+
+<ParamField path="error_type" type="Int32">
+  Error type code indicating the category of error.
+</ParamField>
+
+---
+
+## Governance Canister Interface
+
+### GovernanceCanister
+
+The actor interface for interacting with governance canisters.
+
+```motoko
+public type GovernanceCanister = actor {
+    // Query Methods
+    get_pending_proposals : shared query () -> async [ProposalInfo];
+    get_proposal_info : shared query Nat64 -> async ?ProposalInfo;
+    list_proposals : shared query ListProposalInfo -> async ListProposalInfoResponse;
+    get_metadata : shared query () -> async ({
+        url: ?Text; 
+        logo: ?Text; 
+        name: ?Text; 
+        description: ?Text
+    });
+    list_nervous_system_functions : shared query () -> async ListNervousSystemFunctionsResponse;
+    
+    // ... (additional methods)
+};
+```
+
+This type defines the interface for making calls to governance canisters. The GovernanceService uses this interface internally.
+
+---
+
+## Network Economics Types
+
+### NetworkEconomics
+
+Parameters that govern the economic model of the network.
+
+```motoko
+public type NetworkEconomics = {
+    neuron_minimum_stake_e8s : Nat64;
+    max_proposals_to_keep_per_topic : Nat32;
+    neuron_management_fee_per_proposal_e8s : Nat64;
+    reject_cost_e8s : Nat64;
+    transaction_fee_e8s : Nat64;
+    neuron_spawn_dissolve_delay_seconds : Nat64;
+    minimum_icp_xdr_rate : Nat64;
+    maximum_node_provider_rewards_e8s : Nat64;
+};
+```
+
+<ParamField path="neuron_minimum_stake_e8s" type="Nat64">
+  Minimum amount of ICP (in e8s) required to create a neuron.
+</ParamField>
+
+<ParamField path="reject_cost_e8s" type="Nat64">
+  Cost (in e8s) for a rejected proposal.
+</ParamField>
+
+<ParamField path="transaction_fee_e8s" type="Nat64">
+  Transaction fee for ledger operations (in e8s).
+</ParamField>
+
+---
+
+## Additional Types
+
+### DissolveState
+
+Represents the dissolve state of a neuron.
+
+```motoko
+public type DissolveState = {
+    #DissolveDelaySeconds : Nat64;
+    #WhenDissolvedTimestampSeconds : Nat64;
+};
+```
+
+- `DissolveDelaySeconds`: Neuron is not dissolving, has this delay remaining
+- `WhenDissolvedTimestampSeconds`: Neuron is dissolving, will be dissolved at this timestamp
+
+---
+
+### Followees
+
+List of neurons that are followed for a specific topic.
+
+```motoko
+public type Followees = { followees : [NeuronId] };
+```
+
+---
+
+### KnownNeuronData
+
+Metadata for publicly known neurons.
+
+```motoko
+public type KnownNeuronData = { 
+    name : Text; 
+    description : ?Text 
+};
+```
+
+<ParamField path="name" type="Text">
+  The public name of the neuron.
+</ParamField>
+
+<ParamField path="description" type="?Text">
+  Optional description of the neuron's purpose or owner.
+</ParamField>
+
+---
+
+## Working with E8s
+
+Many values in the governance types use "e8s" (satoshis) as the unit:
+
+- 1 ICP = 100,000,000 e8s
+- 1 e8s = 0.00000001 ICP
+
+This provides precision for fractional ICP amounts. When displaying values to users, convert from e8s to ICP:
+
+```motoko
+let icpAmount = Float.fromInt(Int64.toInt(Int64.fromNat64(stake_e8s))) / 100_000_000.0;
+```
+
+---
+
+## NNS Function IDs
+
+The `GovernanceUtils` module provides a list of NNS function IDs and their names. For example:
+
+- `0`: Unspecified
+- `1`: CreateSubnet
+- `2`: AddNodeToSubnet
+- `3`: NnsCanisterInstall
+- `4`: NnsCanisterUpgrade
+- And many more...
+
+These IDs correspond to the various system functions that can be executed via NNS proposals.
+
+---
+
+## Related Documentation
+
+- [GovernanceService](/api/governance-service) - Methods for interacting with governance canisters
+- [OpenChat Bot SDK Overview](/introduction) - Getting started with the SDK
+
+## Type Usage Examples
+
+### Filtering Proposals
+
+```motoko
+import GT "./Governance/GovernanceTypes";
+
+let filter : GT.ListProposalInfo = {
+    limit = 50;
+    before_proposal = null;
+    include_status = [1]; // Only open proposals
+    include_reward_status = [];
+    exclude_topic = [8]; // Exclude topic 8
+    omit_large_fields = ?true;
+    include_all_manage_neuron_proposals = ?false;
+};
+```
+
+### Checking Vote Tallies
+
+```motoko
+func isProposalPassing(proposal : GT.ProposalInfo) : Bool {
+    switch (proposal.latest_tally) {
+        case (?tally) {
+            tally.yes > tally.no
+        };
+        case null false;
+    };
+};
+```
+
+### Processing Proposal Actions
+
+```motoko
+func getProposalType(proposal : GT.ProposalInfo) : Text {
+    switch (proposal.proposal) {
+        case (?prop) {
+            switch (prop.action) {
+                case (?#Motion(_)) "Motion";
+                case (?#ManageNeuron(_)) "Manage Neuron";
+                case (?#ExecuteNnsFunction(_)) "Execute NNS Function";
+                case (?#ManageNetworkEconomics(_)) "Network Economics";
+                case _ "Other";
+            };
+        };
+        case null "Unknown";
+    };
+};
+```

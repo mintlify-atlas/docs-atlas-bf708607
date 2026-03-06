@@ -1,97 +1,156 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "OpenChat Bot SDK"
+description: "Build powerful bots for OpenChat on the Internet Computer using Motoko"
 ---
 
-## Setting up
+<Note>
+  A comprehensive SDK for creating OpenChat bots with built-in implementations for governance proposal tracking and NNS proposal monitoring.
+</Note>
 
-Get your documentation site up and running in minutes.
+## Get Started in Minutes
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Build your first OpenChat bot with our quickstart guide.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
   >
-    Edit your docs locally and preview them in real time.
+    Create and deploy your first OpenChat bot in under 10 minutes
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Installation"
+    icon="download"
+    href="/installation"
   >
-    Customize the design and colors of your site to match your brand.
+    Set up your development environment with dfx and dependencies
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
+</CardGroup>
+
+## Key Features
+
+Everything you need to build sophisticated OpenChat bots on the Internet Computer.
+
+<CardGroup cols={3}>
+  <Card
+    title="Bot Registration"
+    icon="user-plus"
   >
-    Organize your docs to help users find what they need and succeed with your product.
+    Register bots with OpenChat and configure avatars and display names
   </Card>
   <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
+    title="Community Integration"
+    icon="users"
   >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Join groups, communities, and channels with invite code support
   </Card>
   <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
+    title="Message Management"
+    icon="message"
   >
-    Add sample code to demonstrate how to use your product.
+    Send and edit messages in groups, channels, and threads
   </Card>
   <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
+    title="TallyBot"
+    icon="chart-line"
   >
-    Display images and other media.
+    Track NNS governance proposals with real-time ballot updates
   </Card>
   <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
+    title="ProposalBot"
+    icon="bell"
   >
-    Write once and reuse across your docs.
+    Monitor and broadcast NNS proposal updates automatically
   </Card>
-</Columns>
+  <Card
+    title="Access Control"
+    icon="shield"
+  >
+    Custodian-based permissions with logging and metrics
+  </Card>
+</CardGroup>
 
-## Need inspiration?
+## Bot Implementations
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Pre-built bots ready to deploy or customize for your needs.
+
+<CardGroup cols={2}>
+  <Card
+    title="TallyBot"
+    icon="chart-bar"
+    href="/bots/tally-bot"
+  >
+    Track governance proposals and send tally updates to subscribed channels
+  </Card>
+  <Card
+    title="ProposalBot"
+    icon="scroll"
+    href="/bots/proposal-bot"
+  >
+    Monitor NNS proposals and broadcast updates based on topic subscriptions
+  </Card>
+</CardGroup>
+
+## Core Concepts
+
+Understand the architecture and integration patterns.
+
+<CardGroup cols={3}>
+  <Card
+    title="Bot Architecture"
+    icon="sitemap"
+    href="/concepts/bot-architecture"
+  >
+    Learn how the bot service, logging, and utilities work together
+  </Card>
+  <Card
+    title="OpenChat Integration"
+    icon="plug"
+    href="/concepts/openchat-integration"
+  >
+    Discover how bots interact with the OpenChat API
+  </Card>
+  <Card
+    title="Canister Deployment"
+    icon="cloud-arrow-up"
+    href="/concepts/canister-deployment"
+  >
+    Deploy and manage your bot canisters on the Internet Computer
+  </Card>
+</CardGroup>
+
+## API Reference
+
+Explore the complete API for building custom bots.
+
+<CardGroup cols={2}>
+  <Card
+    title="Bot Service"
+    icon="robot"
+    href="/api/bot-service"
+  >
+    Core bot functionality including initialization, messaging, and community management
+  </Card>
+  <Card
+    title="OpenChat API"
+    icon="comments"
+    href="/api/oc-service"
+  >
+    OpenChat integration layer with types and service methods
+  </Card>
+  <Card
+    title="Governance"
+    icon="landmark"
+    href="/api/governance-service"
+  >
+    NNS governance integration for proposal tracking
+  </Card>
+  <Card
+    title="Utilities"
+    icon="wrench"
+    href="/api/log-service"
+  >
+    Logging, text formatting, and time utilities
+  </Card>
+</CardGroup>

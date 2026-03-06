@@ -1,0 +1,708 @@
+---
+title: 'BotService'
+description: 'Core service class for interacting with the OpenChat platform'
+---
+
+## Overview
+
+The `BotServiceImpl` class provides the main interface for bot operations on OpenChat. It handles bot initialization, avatar management, group/community/channel operations, and message management.
+
+### Constructor
+
+```motoko
+public class BotServiceImpl(
+  botModel : BT.BotModel,
+  ocService : OC.OCService,
+  logService : LT.LogService
+)
+```
+
+<ParamField path="botModel" type="BT.BotModel" required>
+  The bot's data model containing status, name, groups, and saved messages
+</ParamField>
+
+<ParamField path="ocService" type="OC.OCService" required>
+  Service for making OpenChat API calls
+</ParamField>
+
+<ParamField path="logService" type="LT.LogService" required>
+  Service for logging bot operations
+</ParamField>
+
+---
+
+## Bot Initialization
+
+### initBot
+
+Initializes the bot by registering it with the OpenChat platform. Requires 10T cycles for registration fee.
+
+```motoko
+public func initBot<system>(
+  name : Text,
+  _displayName : ?Text
+) : async Result.Result<(), Text>
+```
+
+<ParamField path="name" type="Text" required>
+  The bot's username (must be unique on OpenChat)
+</ParamField>
+
+<ParamField path="_displayName" type="?Text">
+  Optional display name for the bot
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<(), Text>">
+  Returns `#ok()` on success, or `#err(message)` with error details:
+  - `"Initializing"` - Bot is currently initializing
+  - `"Initialized"` - Bot is already initialized
+  - `"AlreadyRegistered"` - Username is already registered
+  - `"Not enough cycles. Required: {n}"` - Insufficient cycles provided
+  - `"Error: {msg}"` - Other registration errors
+</ResponseField>
+
+**Example:**
+
+```motoko
+let result = await botService.initBot<system>("my_bot", ?"My Bot Display Name");
+switch(result) {
+  case(#ok()) { /* Bot initialized successfully */ };
+  case(#err(msg)) { /* Handle error: msg */ };
+}
+```
+
+**Note:** This function requires system capability to add cycles. The bot status must be `#NotInitialized` before calling.
+
+---
+
+## Bot Configuration
+
+### setAvatar
+
+Sets the bot's avatar image. Maximum size is 800KB.
+
+```motoko
+public func setAvatar(
+  args : BT.SetAvatarArgs
+) : async* Result.Result<BT.SetAvatarResponse, Text>
+```
+
+<ParamField path="args" type="SetAvatarArgs" required>
+  Avatar configuration containing the document to use as avatar
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<SetAvatarResponse, Text>">
+  - `#ok(#Success)` - Avatar set successfully
+  - `#err("Avatar too big")` - Avatar exceeds 800KB limit
+  - `#err("Avatar not found")` - No avatar provided in args
+  - `#err("Error: {msg}")` - OpenChat API error
+</ResponseField>
+
+**Example:**
+
+```motoko
+let avatarDoc : OCApi.Document = {
+  id = 12345;
+  mime_type = "image/png";
+  data = avatarBlob;
+};
+
+let result = await* botService.setAvatar({
+  avatar = ?avatarDoc
+});
+```
+
+### getBotStatus
+
+Returns the current initialization status of the bot.
+
+```motoko
+public func getBotStatus() : BT.BotStatus
+```
+
+<ResponseField name="BotStatus" type="BotStatus">
+  One of:
+  - `#NotInitialized` - Bot has not been initialized
+  - `#Initializing` - Bot initialization in progress
+  - `#Initialized` - Bot is ready to use
+</ResponseField>
+
+### setBotStatus
+
+Manually sets the bot status to initialized.
+
+```motoko
+public func setBotStatus() : ()
+```
+
+**Note:** Use with caution. This is typically handled by `initBot`.
+
+---
+
+## Group Operations
+
+### joinGroup
+
+Joins an OpenChat group.
+
+```motoko
+public func joinGroup(
+  groupCanisterId : Text,
+  inviteCode : ?Nat64
+) : async* Result.Result<Text, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The principal/canister ID of the group to join
+</ParamField>
+
+<ParamField path="inviteCode" type="?Nat64">
+  Optional invite code for private groups
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<Text, Text>">
+  - `#ok("OK")` - Successfully joined group
+  - `#err("Already in group")` - Bot is already a member
+  - `#err("Error")` - Join operation failed
+  - `#err(msg)` - Other errors from OpenChat
+</ResponseField>
+
+**Example:**
+
+```motoko
+let result = await* botService.joinGroup(
+  "evg6t-laaaa-aaaar-a4j5q-cai",
+  null
+);
+```
+
+### sendGroupMessage
+
+Sends a message to a group with any content type.
+
+```motoko
+public func sendGroupMessage(
+  groupCanisterId : Text,
+  content : OCApi.MessageContentInitial,
+  threadIndexId : ?Nat32
+) : async* Result.Result<T.SendMessageResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The group's canister ID
+</ParamField>
+
+<ParamField path="content" type="MessageContentInitial" required>
+  Message content (text, image, poll, etc.)
+</ParamField>
+
+<ParamField path="threadIndexId" type="?Nat32">
+  Optional thread root message index for threaded replies
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<SendMessageResponse, Text>">
+  On success, returns `#ok(#Success({ event_index; message_index; message_id }))`
+  
+  Possible error variants:
+  - `#MessageEmpty` - Content is empty
+  - `#TextTooLong(maxLength)` - Text exceeds maximum length
+  - `#NotAuthorized` - Bot lacks permission
+  - `#UserNotInChannel` - Bot is not a group member
+  - `#UserSuspended` - Bot is suspended
+  - `#RulesNotAccepted` - Group rules must be accepted
+</ResponseField>
+
+**Example:**
+
+```motoko
+let content = #Text({ text = "Hello from bot!" });
+let result = await* botService.sendGroupMessage(
+  "evg6t-laaaa-aaaar-a4j5q-cai",
+  content,
+  null
+);
+
+switch(result) {
+  case(#ok(#Success(data))) {
+    // Message sent: data.message_id
+  };
+  case(#ok(error)) { /* Handle specific error variant */ };
+  case(#err(msg)) { /* Handle trapped error */ };
+}
+```
+
+### sendTextGroupMessage
+
+Convenience function to send a text message to a group.
+
+```motoko
+public func sendTextGroupMessage(
+  groupCanisterId : Text,
+  content : Text,
+  threadIndexId : ?Nat32
+) : async* Result.Result<T.SendMessageResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The group's canister ID
+</ParamField>
+
+<ParamField path="content" type="Text" required>
+  Plain text message content
+</ParamField>
+
+<ParamField path="threadIndexId" type="?Nat32">
+  Optional thread root message index
+</ParamField>
+
+**Example:**
+
+```motoko
+let result = await* botService.sendTextGroupMessage(
+  "evg6t-laaaa-aaaar-a4j5q-cai",
+  "Hello, world!",
+  null
+);
+```
+
+### editGroupMessage
+
+Edits a previously sent group message.
+
+```motoko
+public func editGroupMessage(
+  groupCanisterId : Text,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : OCApi.MessageContentInitial
+) : async* Result.Result<OCApi.EditMessageResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The group's canister ID
+</ParamField>
+
+<ParamField path="messageId" type="MessageId" required>
+  The ID of the message to edit (from send response)
+</ParamField>
+
+<ParamField path="threadRootIndex" type="?MessageIndex">
+  Thread root index if editing a threaded message
+</ParamField>
+
+<ParamField path="newContent" type="MessageContentInitial" required>
+  New message content
+</ParamField>
+
+### editTextGroupMessage
+
+Convenience function to edit a text message in a group.
+
+```motoko
+public func editTextGroupMessage(
+  groupCanisterId : Text,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : Text
+) : async* Result.Result<OCApi.EditMessageResponse, Text>
+```
+
+**Example:**
+
+```motoko
+let result = await* botService.editTextGroupMessage(
+  "evg6t-laaaa-aaaar-a4j5q-cai",
+  savedMessageId,
+  null,
+  "Updated message text"
+);
+```
+
+### getGroupMessagesByIndex
+
+Retrieves specific messages from a group by their indexes.
+
+```motoko
+public func getGroupMessagesByIndex(
+  groupCanisterId : Text,
+  indexes : [Nat32],
+  latest_known_update : ?Nat64
+) : async* Result.Result<OCApi.MessagesResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The group's canister ID
+</ParamField>
+
+<ParamField path="indexes" type="[Nat32]" required>
+  Array of message indexes to retrieve
+</ParamField>
+
+<ParamField path="latest_known_update" type="?Nat64">
+  Optional timestamp of latest known update for caching
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<MessagesResponse, Text>">
+  Returns the requested messages with their full content and metadata
+</ResponseField>
+
+**Example:**
+
+```motoko
+let indexes : [Nat32] = [100, 101, 102];
+let result = await* botService.getGroupMessagesByIndex(
+  "evg6t-laaaa-aaaar-a4j5q-cai",
+  indexes,
+  null
+);
+```
+
+### getLatestGroupMessageIndex
+
+Gets the index of the most recent message in a group.
+
+```motoko
+public func getLatestGroupMessageIndex(
+  groupCanisterId : Text
+) : async* ?OCApi.MessageIndex
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The group's canister ID
+</ParamField>
+
+<ResponseField name="Result" type="?MessageIndex">
+  Returns the latest message index, or `null` if unavailable
+</ResponseField>
+
+---
+
+## Community Operations
+
+### joinCommunity
+
+Joins an OpenChat community.
+
+```motoko
+public func joinCommunity(
+  communityCanisterId : Text,
+  inviteCode : ?Nat64,
+  botPrincipal : Principal
+) : async* Result.Result<Text, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The community's canister ID
+</ParamField>
+
+<ParamField path="inviteCode" type="?Nat64">
+  Optional invite code for private communities
+</ParamField>
+
+<ParamField path="botPrincipal" type="Principal" required>
+  The bot's principal ID
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<Text, Text>">
+  - `#ok("OK")` - Successfully joined community
+  - `#err("Already in community")` - Bot is already a member
+  - `#err("GateCheckFailed")` - Bot doesn't meet community requirements
+  - `#err("NotInvited")` - Invite required but not provided
+  - `#err("UserBlocked")` - Bot is blocked from community
+  - `#err("MemberLimitReached")` - Community is full
+  - `#err("CommunityFrozen")` - Community is frozen
+  - `#err("PrivateCommunity")` - Cannot access private community info
+</ResponseField>
+
+**Example:**
+
+```motoko
+let botPrincipal = Principal.fromActor(this);
+let result = await* botService.joinCommunity(
+  "community-canister-id",
+  null,
+  botPrincipal
+);
+```
+
+### joinChannel
+
+Joins a channel within a community.
+
+```motoko
+public func joinChannel(
+  communityCanisterId : Text,
+  channelId : Nat,
+  inviteCode : ?Nat64
+) : async* Result.Result<Text, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The community's canister ID
+</ParamField>
+
+<ParamField path="channelId" type="Nat" required>
+  The channel ID within the community
+</ParamField>
+
+<ParamField path="inviteCode" type="?Nat64">
+  Optional invite code for private channels
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<Text, Text>">
+  Similar error cases to `joinCommunity`, plus:
+  - `#err("UserNotInCommunity")` - Must join community first
+  - `#err("UserSuspended")` - Bot is suspended from community
+  - `#err("ChannelNotFound")` - Channel doesn't exist
+</ResponseField>
+
+### sendChannelMessage
+
+Sends a message to a community channel.
+
+```motoko
+public func sendChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  content : OCApi.MessageContent,
+  threadIndexId : ?Nat32
+) : async* Result.Result<T.SendMessageResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The community's canister ID
+</ParamField>
+
+<ParamField path="channelId" type="Nat" required>
+  The channel ID
+</ParamField>
+
+<ParamField path="content" type="MessageContent" required>
+  Message content
+</ParamField>
+
+<ParamField path="threadIndexId" type="?Nat32">
+  Optional thread root message index
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<SendMessageResponse, Text>">
+  Same response format as `sendGroupMessage`, with additional variants:
+  - `#ChannelNotFound` - Channel doesn't exist
+  - `#UserNotInCommunity` - Bot not in community
+  - `#UserNotInChannel` - Bot not in channel
+  - `#CommunityFrozen` - Community is frozen
+  - `#CommunityRulesNotAccepted` - Community rules must be accepted
+</ResponseField>
+
+**Example:**
+
+```motoko
+let content = #Text({ text = "Hello channel!" });
+let result = await* botService.sendChannelMessage(
+  "community-canister-id",
+  42,
+  content,
+  null
+);
+```
+
+### editChannelMessage
+
+Edits a message in a community channel.
+
+```motoko
+public func editChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : OCApi.MessageContentInitial
+) : async* Result.Result<OCApi.EditChannelMessageResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The community's canister ID
+</ParamField>
+
+<ParamField path="channelId" type="Nat" required>
+  The channel ID
+</ParamField>
+
+<ParamField path="messageId" type="MessageId" required>
+  The message ID to edit
+</ParamField>
+
+<ParamField path="threadRootIndex" type="?MessageIndex">
+  Thread root index if editing a threaded message
+</ParamField>
+
+<ParamField path="newContent" type="MessageContentInitial" required>
+  New message content
+</ParamField>
+
+---
+
+## Message Storage
+
+The bot service provides key-value storage for message IDs, useful for tracking messages you want to edit later.
+
+### saveMessageId
+
+Saves a message ID with an associated key.
+
+```motoko
+public func saveMessageId(
+  key : Text,
+  messageid : OCApi.MessageId
+) : ()
+```
+
+<ParamField path="key" type="Text" required>
+  Unique identifier for this message
+</ParamField>
+
+<ParamField path="messageid" type="MessageId" required>
+  The message ID to save
+</ParamField>
+
+**Example:**
+
+```motoko
+// After sending a message
+switch(result) {
+  case(#ok(#Success(data))) {
+    botService.saveMessageId("welcome-message", data.message_id);
+  };
+  case(_) {};
+}
+```
+
+### getMessageId
+
+Retrieves a previously saved message ID.
+
+```motoko
+public func getMessageId(
+  key : Text
+) : ?OCApi.MessageId
+```
+
+<ParamField path="key" type="Text" required>
+  The key used when saving the message ID
+</ParamField>
+
+<ResponseField name="Result" type="?MessageId">
+  Returns the message ID if found, or `null` if not found
+</ResponseField>
+
+**Example:**
+
+```motoko
+switch(botService.getMessageId("welcome-message")) {
+  case(?msgId) {
+    // Edit the message
+    await* botService.editTextGroupMessage(groupId, msgId, null, "Updated text");
+  };
+  case(null) { /* Message ID not found */ };
+}
+```
+
+### deleteMessageId
+
+Deletes a saved message ID.
+
+```motoko
+public func deleteMessageId(
+  key : Text
+) : ()
+```
+
+<ParamField path="key" type="Text" required>
+  The key of the message ID to delete
+</ParamField>
+
+### deleteAllMessageIds
+
+Clears all saved message IDs.
+
+```motoko
+public func deleteAllMessageIds() : ()
+```
+
+**Use with caution:** This removes all stored message ID mappings.
+
+---
+
+## Utility Functions
+
+### getNNSProposalMessageData
+
+Extracts NNS proposal information from a message event.
+
+```motoko
+public func getNNSProposalMessageData(
+  message : OCApi.MessageEventWrapper
+) : Result.Result<{proposalId : OCApi.ProposalId; messageIndex : OCApi.MessageIndex}, Text>
+```
+
+<ParamField path="message" type="MessageEventWrapper" required>
+  A message event from OpenChat
+</ParamField>
+
+<ResponseField name="Result" type="Result.Result<ProposalData, Text>">
+  - `#ok({ proposalId; messageIndex })` - Successfully extracted proposal data
+  - `#err("Not a governance proposal")` - Message doesn't contain a proposal
+  - `#err("Not a NNS proposal")` - Proposal is SNS, not NNS
+</ResponseField>
+
+**Example:**
+
+```motoko
+let #ok(messages) = await* botService.getGroupMessagesByIndex(groupId, [100], null)
+else { return; };
+
+for (msg in messages.messages.vals()) {
+  switch(botService.getNNSProposalMessageData(msg)) {
+    case(#ok(data)) {
+      // Process NNS proposal: data.proposalId
+    };
+    case(#err(_)) { /* Not an NNS proposal message */ };
+  };
+}
+```
+
+---
+
+## Constants
+
+- **BOT_REGISTRATION_FEE**: 10T cycles (10,000,000,000,000)
+- **MAX_AVATAR_SIZE**: 800KB (819,200 bytes)
+- **USER_INDEX_CANISTER**: `"4bkt6-4aaaa-aaaaf-aaaiq-cai"`
+
+---
+
+## Error Handling
+
+All async functions in BotService return `Result.Result<T, Text>` types. Always handle both success and error cases:
+
+```motoko
+switch(await* botService.someOperation()) {
+  case(#ok(value)) {
+    // Handle success
+  };
+  case(#err(message)) {
+    // Log or handle error: message
+  };
+}
+```
+
+For functions that return variant responses (like `SendMessageResponse`), check the specific variant:
+
+```motoko
+switch(await* botService.sendGroupMessage(groupId, content, null)) {
+  case(#ok(#Success(data))) { /* Success */ };
+  case(#ok(#TextTooLong(max))) { /* Handle text length error */ };
+  case(#ok(#NotAuthorized)) { /* Handle authorization error */ };
+  case(#err(msg)) { /* Handle trapped error */ };
+}
+```

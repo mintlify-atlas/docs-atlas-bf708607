@@ -1,0 +1,469 @@
+---
+title: 'OCService'
+description: 'OpenChat API integration layer for bot interactions'
+---
+
+## Overview
+
+The `OCService` module provides a high-level interface for interacting with OpenChat canisters. It wraps the low-level OpenChat APIs and provides error handling, making it easier to build bots that interact with OpenChat groups, communities, and channels.
+
+This is the primary service layer you'll use to integrate your bot with OpenChat.
+
+## OCServiceImpl Class
+
+The main class that implements the OpenChat service interface.
+
+```motoko
+public class OCServiceImpl()
+```
+
+### Bot Registration
+
+#### registerBot
+
+Registers a new bot with OpenChat.
+
+```motoko
+public func registerBot(
+  userIndexCanister : Text,
+  { username : Text; displayName : ?Text }
+) : async* Result.Result<OCApi.InitializeBotResponse, Text>
+```
+
+<ParamField path="userIndexCanister" type="Text" required>
+  The canister ID of the OpenChat user index canister
+</ParamField>
+
+<ParamField path="username" type="Text" required>
+  The username for the bot (must be unique)
+</ParamField>
+
+<ParamField path="displayName" type="?Text">
+  Optional display name for the bot
+</ParamField>
+
+<ResponseField name="Result" type="Result<InitializeBotResponse, Text>">
+  Returns `#ok(InitializeBotResponse)` on success, or `#err(Text)` with error message on failure
+  
+  <Expandable title="InitializeBotResponse variants">
+    - `#Success` - Bot registered successfully
+    - `#AlreadyRegistered` - Bot username already exists
+    - `#UsernameTaken` - Username is taken by another user
+    - `#UsernameInvalid` - Username format is invalid
+    - `#UsernameTooShort` - Username is too short
+    - `#UsernameTooLong` - Username is too long
+    - `#InsufficientCyclesProvided` - Not enough cycles provided
+    - `#InternalError(Text)` - Internal error occurred
+  </Expandable>
+</ResponseField>
+
+#### setAvatar
+
+Sets the avatar for the bot.
+
+```motoko
+public func setAvatar(
+  userIndexCanister : Text,
+  avatar : OCApi.SetAvatarArgs
+) : async* Result.Result<OCApi.SetAvatarResponse, Text>
+```
+
+<ParamField path="userIndexCanister" type="Text" required>
+  The canister ID of the OpenChat user index canister
+</ParamField>
+
+<ParamField path="avatar" type="SetAvatarArgs" required>
+  Avatar configuration with `avatar_id` field (optional Nat)
+</ParamField>
+
+<ResponseField name="Result" type="Result<SetAvatarResponse, Text>">
+  Returns `#Success` or `#UserNotFound`
+</ResponseField>
+
+### User Information
+
+#### userSummary
+
+Retrieves summary information about a user.
+
+```motoko
+public func userSummary(
+  userIndexCanister : Text,
+  { userId : ?OCApi.UserId; username : ?Text }
+) : async* Result.Result<OCApi.UserSummaryResponse, Text>
+```
+
+<ParamField path="userIndexCanister" type="Text" required>
+  The canister ID of the OpenChat user index canister
+</ParamField>
+
+<ParamField path="userId" type="?UserId">
+  Optional user ID to look up
+</ParamField>
+
+<ParamField path="username" type="?Text">
+  Optional username to look up
+</ParamField>
+
+<ResponseField name="Result" type="Result<UserSummaryResponse, Text>">
+  Returns user summary information including username, display name, avatar, bot status, and diamond membership status
+</ResponseField>
+
+### Group & Community Information
+
+#### publicGroupSummary
+
+Retrieves public information about a group.
+
+```motoko
+public func publicGroupSummary(
+  groupCanisterId : Text,
+  args : { invite_code : ?Nat64 }
+) : async* Result.Result<OCTypes.PublicSummaryResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The canister ID of the group
+</ParamField>
+
+<ParamField path="invite_code" type="?Nat64">
+  Optional invite code if the group requires one
+</ParamField>
+
+<ResponseField name="Result" type="Result<PublicSummaryResponse, Text>">
+  Returns `#Success` with group summary or `#NotAuthorized`
+</ResponseField>
+
+#### publicCommunitySummary
+
+Retrieves public information about a community.
+
+```motoko
+public func publicCommunitySummary(
+  communityCanisterId : Text,
+  args : { invite_code : ?Nat64 }
+) : async* Result.Result<OCApi.CommunitySummaryResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The canister ID of the community
+</ParamField>
+
+<ParamField path="invite_code" type="?Nat64">
+  Optional invite code if required
+</ParamField>
+
+<ResponseField name="Result" type="Result<CommunitySummaryResponse, Text>">
+  Returns community summary with channels, permissions, and membership details
+</ResponseField>
+
+### Joining Groups & Communities
+
+#### joinGroup
+
+Joins a group chat.
+
+```motoko
+public func joinGroup(
+  groupCanisterId : Text,
+  args : OCApi.JoinGroupArgs
+) : async* Result.Result<OCApi.JoinGroupResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The canister ID of the group to join
+</ParamField>
+
+<ParamField path="args" type="JoinGroupArgs" required>
+  Join arguments including chat_id, invite_code, and correlation_id
+</ParamField>
+
+<ResponseField name="Result" type="Result<JoinGroupResponse, Text>">
+  <Expandable title="Response variants">
+    - `#Success` - Successfully joined group
+    - `#AlreadyInGroup` / `#AlreadyInGroupV2` - Already a member
+    - `#GroupNotFound` - Group doesn't exist
+    - `#GroupNotPublic` - Group is private
+    - `#NotInvited` - Not invited to private group
+    - `#GateCheckFailed` - Failed access gate requirements
+    - `#ParticipantLimitReached` - Group is full
+    - `#Blocked` - User is blocked
+    - `#UserSuspended` - User is suspended
+    - `#ChatFrozen` - Group is frozen
+  </Expandable>
+</ResponseField>
+
+#### joinCommunity
+
+Joins a community.
+
+```motoko
+public func joinCommunity(
+  communityCanisterId : Text,
+  args : OCApi.JoinCommunityArgs
+) : async* Result.Result<OCApi.JoinCommunityResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The canister ID of the community
+</ParamField>
+
+<ParamField path="args" type="JoinCommunityArgs" required>
+  Join arguments including community_id, user_id, principal, invite_code, and bot flags
+</ParamField>
+
+<ResponseField name="Result" type="Result<JoinCommunityResponse, Text>">
+  Returns `#Success` with community summary, or error variant
+</ResponseField>
+
+#### joinChannel
+
+Joins a channel within a community.
+
+```motoko
+public func joinChannel(
+  communityCanisterId : Text,
+  args : OCApi.JoinChannelArgs
+) : async* Result.Result<OCApi.JoinChannelResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The canister ID of the community
+</ParamField>
+
+<ParamField path="args" type="JoinChannelArgs" required>
+  Join arguments including community_id, channel_id, user_id, and other metadata
+</ParamField>
+
+<ResponseField name="Result" type="Result<JoinChannelResponse, Text>">
+  Returns channel summary on success, or error variant indicating the failure reason
+</ResponseField>
+
+### Messaging
+
+#### sendGroupMessage
+
+Sends a message to a group chat.
+
+```motoko
+public func sendGroupMessage(
+  groupCanisterId : Text,
+  sender : Text,
+  senderDisplayName : ?Text,
+  content : OCApi.MessageContentInitial,
+  messageId : Nat,
+  threadIndexId : ?Nat32
+) : async* Result.Result<OCApi.SendMessageResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The canister ID of the group
+</ParamField>
+
+<ParamField path="sender" type="Text" required>
+  The sender's username
+</ParamField>
+
+<ParamField path="senderDisplayName" type="?Text">
+  Optional display name
+</ParamField>
+
+<ParamField path="content" type="MessageContentInitial" required>
+  The message content (Text, Image, File, Poll, etc.)
+</ParamField>
+
+<ParamField path="messageId" type="Nat" required>
+  Unique message identifier
+</ParamField>
+
+<ParamField path="threadIndexId" type="?Nat32">
+  Optional thread root message index if replying in a thread
+</ParamField>
+
+<ResponseField name="Result" type="Result<SendMessageResponse, Text>">
+  Returns `#Success` with event_index and message_index, or error variant
+</ResponseField>
+
+#### sendChannelMessage
+
+Sends a message to a community channel.
+
+```motoko
+public func sendChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  sender : Text,
+  senderDisplayName : ?Text,
+  content : OCApi.MessageContent,
+  messageId : Nat,
+  threadIndexId : ?Nat32
+) : async* Result.Result<OCApi.SendMessageResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The canister ID of the community
+</ParamField>
+
+<ParamField path="channelId" type="Nat" required>
+  The channel ID within the community
+</ParamField>
+
+<ParamField path="sender" type="Text" required>
+  The sender's username
+</ParamField>
+
+<ParamField path="senderDisplayName" type="?Text">
+  Optional display name
+</ParamField>
+
+<ParamField path="content" type="MessageContent" required>
+  The message content
+</ParamField>
+
+<ParamField path="messageId" type="Nat" required>
+  Unique message identifier
+</ParamField>
+
+<ParamField path="threadIndexId" type="?Nat32">
+  Optional thread root message index
+</ParamField>
+
+<ResponseField name="Result" type="Result<SendMessageResponse, Text>">
+  Returns success with message indices or error variant
+</ResponseField>
+
+#### editGroupMessage
+
+Edits an existing group message.
+
+```motoko
+public func editGroupMessage(
+  groupCanisterId : Text,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : OCApi.MessageContentInitial
+) : async* Result.Result<OCApi.EditMessageResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The canister ID of the group
+</ParamField>
+
+<ParamField path="messageId" type="MessageId" required>
+  The ID of the message to edit
+</ParamField>
+
+<ParamField path="threadRootIndex" type="?MessageIndex">
+  Optional thread root if editing a thread message
+</ParamField>
+
+<ParamField path="newContent" type="MessageContentInitial" required>
+  The new message content
+</ParamField>
+
+<ResponseField name="Result" type="Result<EditMessageResponse, Text>">
+  Returns `#Success`, `#MessageNotFound`, `#CallerNotInGroup`, `#UserSuspended`, or `#ChatFrozen`
+</ResponseField>
+
+#### editChannelMessage
+
+Edits an existing channel message.
+
+```motoko
+public func editChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  messageId : OCApi.MessageId,
+  threadRootIndex : ?OCApi.MessageIndex,
+  newContent : OCApi.MessageContentInitial
+) : async* Result.Result<OCApi.EditChannelMessageResponse, Text>
+```
+
+<ParamField path="communityCanisterId" type="Text" required>
+  The canister ID of the community
+</ParamField>
+
+<ParamField path="channelId" type="Nat" required>
+  The channel ID
+</ParamField>
+
+<ParamField path="messageId" type="MessageId" required>
+  The ID of the message to edit
+</ParamField>
+
+<ParamField path="threadRootIndex" type="?MessageIndex">
+  Optional thread root index
+</ParamField>
+
+<ParamField path="newContent" type="MessageContentInitial" required>
+  The new message content
+</ParamField>
+
+<ResponseField name="Result" type="Result<EditChannelMessageResponse, Text>">
+  Returns success or error variant indicating the failure reason
+</ResponseField>
+
+### Message Retrieval
+
+#### messagesByMessageIndex
+
+Retrieves messages by their message indices.
+
+```motoko
+public func messagesByMessageIndex(
+  groupCanisterId : Text,
+  args : OCApi.MessagesByMessageIndexArgs
+) : async* Result.Result<OCApi.MessagesByMessageIndexResponse, Text>
+```
+
+<ParamField path="groupCanisterId" type="Text" required>
+  The canister ID of the group
+</ParamField>
+
+<ParamField path="args" type="MessagesByMessageIndexArgs" required>
+  Arguments including:
+  - `thread_root_message_index`: Optional thread root
+  - `messages`: Array of message indices to retrieve
+  - `latest_known_update`: Optional timestamp for optimization
+</ParamField>
+
+<ResponseField name="Result" type="Result<MessagesByMessageIndexResponse, Text>">
+  Returns `#Success` with messages array, latest_event_index, and chat_last_updated timestamp
+</ResponseField>
+
+## Error Handling
+
+All methods return `Result.Result<T, Text>` types:
+- `#ok(value)` - Successful operation with result value
+- `#err(message)` - Operation failed with error message
+
+The service layer automatically catches exceptions from canister calls and converts them to error results.
+
+## Usage Example
+
+```motoko
+import OCService "backend/OC/OCService";
+
+let ocService = OCService.OCServiceImpl();
+
+// Register bot
+let result = await* ocService.registerBot(
+  "renrk-eyaaa-aaaaa-aaada-cai",
+  {
+    username = "my_bot";
+    displayName = ?"My Bot";
+  }
+);
+
+switch (result) {
+  case (#ok(#Success)) {
+    // Bot registered successfully
+  };
+  case (#ok(otherResponse)) {
+    // Handle other response variants
+  };
+  case (#err(message)) {
+    // Handle error
+  };
+};
+```

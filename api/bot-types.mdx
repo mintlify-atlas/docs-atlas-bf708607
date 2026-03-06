@@ -1,0 +1,498 @@
+---
+title: 'BotTypes'
+description: 'Type definitions for the OpenChat Bot SDK'
+---
+
+## Overview
+
+The `BotTypes` module defines all core types used by the Bot SDK, including the bot's data model, status types, and API interfaces.
+
+---
+
+## Core Types
+
+### BotModel
+
+The main data structure that stores the bot's state.
+
+```motoko
+public type BotModel = {
+  groups : Map.Map<Text, ()>;
+  savedMessages : Map.Map<Text, OCApi.MessageId>;
+  var botStatus : BotStatus;
+  var botName : ?Text;
+  var botDisplayName : ?Text;
+}
+```
+
+<ParamField path="groups" type="Map.Map<Text, ()>">
+  Map of group canister IDs that the bot has joined. Keys are Text representation of Principal IDs.
+</ParamField>
+
+<ParamField path="savedMessages" type="Map.Map<Text, MessageId>">
+  Key-value store for message IDs. Use this to track messages you may want to edit later.
+</ParamField>
+
+<ParamField path="botStatus" type="BotStatus">
+  Current initialization status of the bot (mutable)
+</ParamField>
+
+<ParamField path="botName" type="?Text">
+  The bot's username on OpenChat (mutable, set during initialization)
+</ParamField>
+
+<ParamField path="botDisplayName" type="?Text">
+  The bot's display name (mutable, optional)
+</ParamField>
+
+**Example:**
+
+```motoko
+import BotService "./Bot/BotService";
+import BotTypes "./Bot/BotTypes";
+
+stable var botModel : BotTypes.BotModel = BotService.initModel();
+```
+
+---
+
+### BotStatus
+
+Represents the bot's initialization state.
+
+```motoko
+public type BotStatus = {
+  #NotInitialized;
+  #Initializing;
+  #Initialized;
+}
+```
+
+<ResponseField name="#NotInitialized" type="variant">
+  Bot has not been registered with OpenChat. This is the initial state.
+</ResponseField>
+
+<ResponseField name="#Initializing" type="variant">
+  Bot registration is in progress. The bot cannot perform operations in this state.
+</ResponseField>
+
+<ResponseField name="#Initialized" type="variant">
+  Bot is fully registered and ready to use. All API operations are available.
+</ResponseField>
+
+**State Transitions:**
+
+```
+#NotInitialized → #Initializing → #Initialized
+                ↓                ↓
+           (on error)      (on error)
+                ↓                ↓
+         #NotInitialized  #NotInitialized
+```
+
+**Example:**
+
+```motoko
+switch(botService.getBotStatus()) {
+  case(#NotInitialized) {
+    // Need to call initBot first
+    await botService.initBot<system>("my_bot", null);
+  };
+  case(#Initializing) {
+    // Wait for initialization to complete
+  };
+  case(#Initialized) {
+    // Ready to use bot features
+    await* botService.joinGroup(groupId, null);
+  };
+}
+```
+
+---
+
+## Avatar Types
+
+### SetAvatarArgs
+
+Arguments for setting the bot's avatar.
+
+```motoko
+public type SetAvatarArgs = {
+  avatar : ?OCApi.Document;
+}
+```
+
+<ParamField path="avatar" type="?Document">
+  Optional avatar document. Must be under 800KB. Set to `null` to remove avatar.
+</ParamField>
+
+**Example:**
+
+```motoko
+let avatarDoc : OCApi.Document = {
+  id = 12345;
+  mime_type = "image/png";
+  data = pngBlob;
+};
+
+let args : BotTypes.SetAvatarArgs = {
+  avatar = ?avatarDoc
+};
+
+await* botService.setAvatar(args);
+```
+
+### SetAvatarResponse
+
+Response type for avatar setting operations.
+
+```motoko
+public type SetAvatarResponse = {
+  #Success;
+  #AvatarTooBig : OCApi.FieldTooLongResult;
+}
+```
+
+<ResponseField name="#Success" type="variant">
+  Avatar was successfully updated
+</ResponseField>
+
+<ResponseField name="#AvatarTooBig" type="variant">
+  Avatar exceeds the maximum size (800KB). Contains details about the size limit.
+</ResponseField>
+
+---
+
+## Service Interface
+
+### BotService
+
+The complete interface for bot operations. This type definition shows all available methods.
+
+```motoko
+public type BotService = {
+  // Initialization
+  initBot : (name : Text, _displayName : ?Text) -> async Result.Result<(), Text>;
+  setAvatar : (args : SetAvatarArgs) -> async* Result.Result<SetAvatarResponse, Text>;
+
+  // Group operations
+  joinGroup : (groupCanisterId : Text, inviteCode : ?Nat64) -> async* Result.Result<Text, Text>;
+  sendGroupMessage : (groupCanisterId : Text, content : OCApi.MessageContentInitial, threadIndexId : ?Nat32) -> async* Result.Result<T.SendMessageResponse, Text>;
+  sendTextGroupMessage : (groupCanisterId : Text, content : Text, threadIndexId : ?Nat32) -> async* Result.Result<T.SendMessageResponse, Text>;
+  editGroupMessage : (groupCanisterId : Text, messageId : OCApi.MessageId, threadRootIndex : ?OCApi.MessageIndex, newContent : OCApi.MessageContentInitial) -> async* Result.Result<OCApi.EditMessageResponse, Text>;
+  editTextGroupMessage : (groupCanisterId : Text, messageId : OCApi.MessageId, threadRootIndex : ?OCApi.MessageIndex, newContent : Text) -> async* Result.Result<OCApi.EditMessageResponse, Text>;
+  getGroupMessagesByIndex : (groupCanisterId : Text, indexes : [Nat32], latest_known_update : ?Nat64) -> async* Result.Result<OCApi.MessagesResponse, Text>;
+  getLatestGroupMessageIndex : (groupCanisterId : Text) -> async* ?OCApi.MessageIndex;
+
+  // Community operations
+  joinCommunity : (communityCanisterId : Text, inviteCode : ?Nat64, botPrincipal : Principal) -> async* Result.Result<Text, Text>;
+  joinChannel : (communityCanisterId : Text, channelId : Nat, inviteCode : ?Nat64) -> async* Result.Result<Text, Text>;
+  sendChannelMessage : (communityCanisterId : Text, channelId : Nat, content : OCApi.MessageContent, threadIndexId : ?Nat32) -> async* Result.Result<T.SendMessageResponse, Text>;
+  editChannelMessage : (communityCanisterId : Text, channelId : Nat, messageId : OCApi.MessageId, threadRootIndex : ?OCApi.MessageIndex, newContent : OCApi.MessageContentInitial) -> async* Result.Result<OCApi.EditChannelMessageResponse, Text>;
+
+  // Utility functions
+  getNNSProposalMessageData : (message : OCApi.MessageEventWrapper) -> Result.Result<{proposalId : OCApi.ProposalId; messageIndex : OCApi.MessageIndex}, Text>;
+
+  // Message storage
+  saveMessageId : (key : Text, messageid : OCApi.MessageId) -> ();
+  getMessageId : (key : Text) -> ?OCApi.MessageId;
+  deleteMessageId : (key : Text) -> ();
+  deleteAllMessageIds : () -> ();
+}
+```
+
+---
+
+## Related Types
+
+These types are defined in other modules but frequently used with the Bot SDK:
+
+### SendMessageResponse
+
+Defined in `Types.mo`, this enhanced response type includes the message ID.
+
+```motoko
+public type SendMessageResponse = {
+  #Success : {
+    event_index : Nat32;
+    message_index : Nat32;
+    message_id : OCApi.MessageId;
+  };
+  #ChannelNotFound;
+  #ThreadMessageNotFound;
+  #MessageEmpty;
+  #TextTooLong : Nat32;
+  #InvalidPoll : OCApi.InvalidPollReason;
+  #NotAuthorized;
+  #UserNotInCommunity;
+  #UserNotInChannel;
+  #UserSuspended;
+  #InvalidRequest : Text;
+  #CommunityFrozen;
+  #RulesNotAccepted;
+  #CommunityRulesNotAccepted;
+}
+```
+
+**Key Fields:**
+
+<ResponseField name="event_index" type="Nat32">
+  The index of this event in the chat's event log
+</ResponseField>
+
+<ResponseField name="message_index" type="Nat32">
+  The sequential index of this message in the chat
+</ResponseField>
+
+<ResponseField name="message_id" type="MessageId">
+  Unique ID for this message, used for editing and referencing
+</ResponseField>
+
+**Example:**
+
+```motoko
+switch(await* botService.sendTextGroupMessage(groupId, "Hello!", null)) {
+  case(#ok(#Success(data))) {
+    // Save message ID for later editing
+    botService.saveMessageId("greeting", data.message_id);
+    Debug.print("Sent message at index: " # Nat32.toText(data.message_index));
+  };
+  case(#ok(#TextTooLong(max))) {
+    Debug.print("Text too long. Max length: " # Nat32.toText(max));
+  };
+  case(#ok(#NotAuthorized)) {
+    Debug.print("Bot lacks permission to send messages");
+  };
+  case(#err(msg)) {
+    Debug.print("Error: " # msg);
+  };
+}
+```
+
+---
+
+## OpenChat API Types
+
+The following types are imported from `OCApi` and used throughout the Bot SDK:
+
+### MessageId
+
+```motoko
+type MessageId = Nat
+```
+
+Unique identifier for a message. Generated automatically when sending messages.
+
+### MessageIndex
+
+```motoko
+type MessageIndex = Nat32
+```
+
+Sequential index of a message within a chat or channel.
+
+### MessageContent
+
+Variant type for different message content types:
+
+```motoko
+type MessageContent = {
+  #Text : { text : Text };
+  #Image : ImageContent;
+  #Video : VideoContent;
+  #Audio : AudioContent;
+  #File : FileContent;
+  #Poll : PollContent;
+  #Crypto : CryptoContent;
+  #Deleted : DeletedContent;
+  #GovernanceProposal : ProposalContent;
+  // ... and more
+}
+```
+
+**Common Content Types:**
+
+<ResponseField name="#Text" type="{ text : Text }">
+  Plain text message
+</ResponseField>
+
+<ResponseField name="#Image" type="ImageContent">
+  Image with blob data and metadata
+</ResponseField>
+
+<ResponseField name="#Poll" type="PollContent">
+  Interactive poll with options
+</ResponseField>
+
+<ResponseField name="#GovernanceProposal" type="ProposalContent">
+  NNS or SNS governance proposal
+</ResponseField>
+
+**Example:**
+
+```motoko
+// Text message
+let textContent = #Text({ text = "Hello, world!" });
+
+// Poll message
+let pollContent = #Poll({
+  question = "Favorite color?";
+  options = ["Red", "Blue", "Green"];
+  end_date = ?(Time.now() + 86400_000_000_000); // 24 hours
+  anonymous = false;
+  allow_multiple_votes = false;
+});
+
+await* botService.sendGroupMessage(groupId, textContent, null);
+```
+
+### MessageContentInitial
+
+Similar to `MessageContent` but used when creating new messages (some fields only exist on sent messages).
+
+### Document
+
+Used for avatar images:
+
+```motoko
+type Document = {
+  id : Nat;
+  mime_type : Text;
+  data : Blob;
+}
+```
+
+<ParamField path="id" type="Nat" required>
+  Unique identifier for the document
+</ParamField>
+
+<ParamField path="mime_type" type="Text" required>
+  MIME type (e.g., "image/png", "image/jpeg")
+</ParamField>
+
+<ParamField path="data" type="Blob" required>
+  Raw image data (must be under 800KB for avatars)
+</ParamField>
+
+### ProposalId
+
+```motoko
+type ProposalId = Nat64
+```
+
+Unique identifier for NNS or SNS governance proposals.
+
+---
+
+## Type Aliases
+
+For convenience, these type aliases are commonly used:
+
+```motoko
+type TextPrincipal = Text;  // String representation of Principal
+type MessageId = Nat;       // Unique message identifier
+type MessageIndex = Nat32;  // Sequential message index
+```
+
+---
+
+## Creating a Bot Model
+
+Use the `initModel` function to create a new bot model:
+
+```motoko
+import BotService "./Bot/BotService";
+import BotTypes "./Bot/BotTypes";
+
+// In your actor
+stable var botModel : BotTypes.BotModel = BotService.initModel();
+```
+
+The `initModel` function initializes:
+- `botStatus` to `#NotInitialized`
+- `botName` to `null`
+- `botDisplayName` to `null`
+- Empty `groups` map
+- Empty `savedMessages` map
+
+---
+
+## Type Safety Examples
+
+### Working with Result Types
+
+```motoko
+let result : Result.Result<(), Text> = await botService.initBot<system>("my_bot", null);
+
+switch(result) {
+  case(#ok(())) {
+    // Success - note the unit type ()
+  };
+  case(#err(message : Text)) {
+    // Error with message
+  };
+}
+```
+
+### Optional Types
+
+```motoko
+// Optional display name
+let displayName : ?Text = ?"Friendly Bot Name";
+await botService.initBot<system>("bot_name", displayName);
+
+// Optional invite code
+let inviteCode : ?Nat64 = null;
+await* botService.joinGroup(groupId, inviteCode);
+
+// Optional thread index
+let threadRoot : ?Nat32 = ?123;
+await* botService.sendTextGroupMessage(groupId, "Reply", threadRoot);
+```
+
+### Variant Pattern Matching
+
+```motoko
+let status : BotTypes.BotStatus = botService.getBotStatus();
+
+let statusText = switch(status) {
+  case(#NotInitialized) { "Not initialized" };
+  case(#Initializing) { "Initializing..." };
+  case(#Initialized) { "Ready" };
+};
+```
+
+---
+
+## Best Practices
+
+1. **Always check bot status** before performing operations:
+   ```motoko
+   if (botService.getBotStatus() != #Initialized) {
+     return #err("Bot not initialized");
+   }
+   ```
+
+2. **Save important message IDs** for later editing:
+   ```motoko
+   switch(sendResult) {
+     case(#ok(#Success(data))) {
+       botService.saveMessageId("status-message", data.message_id);
+     };
+     case(_) {};
+   }
+   ```
+
+3. **Use Result pattern matching** for comprehensive error handling:
+   ```motoko
+   switch(await* botService.joinGroup(groupId, null)) {
+     case(#ok(_)) { /* Success */ };
+     case(#err("Already in group")) { /* Already joined */ };
+     case(#err(msg)) { /* Other error */ };
+   }
+   ```
+
+4. **Store botModel as stable** to persist across upgrades:
+   ```motoko
+   stable var botModel : BotTypes.BotModel = BotService.initModel();
+   ```

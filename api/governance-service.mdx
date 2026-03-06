@@ -1,0 +1,302 @@
+---
+title: 'GovernanceService'
+description: 'NNS Governance Canister Integration Service'
+---
+
+The `GovernanceService` class provides methods to interact with the Internet Computer's Network Nervous System (NNS) governance canister and other governance canisters. This service enables bots to track proposals, monitor voting status, and retrieve governance-related information.
+
+## Overview
+
+The GovernanceService integrates with the NNS governance canister (`rrkah-fqaaa-aaaaa-aaaaq-cai`) to provide access to proposal data, voting information, and governance metadata. This is particularly useful for bots that need to:
+
+- Monitor NNS proposals and voting activity
+- Track proposal status and outcomes
+- Retrieve governance canister metadata
+- List available governance functions
+
+## Class Definition
+
+```motoko
+public class GovernanceService()
+```
+
+Instantiate the service to access governance canister methods:
+
+```motoko
+import GS "./Governance/GovernanceService";
+
+let governanceService = GS.GovernanceService();
+```
+
+## Methods
+
+### listProposals
+
+Retrieves a list of proposals from a governance canister based on the provided filter criteria.
+
+```motoko
+public func listProposals(
+    governanceId : Text, 
+    info : GT.ListProposalInfo
+) : async* Result.Result<GT.ListProposalInfoResponse, Text>
+```
+
+<ParamField path="governanceId" type="Text" required>
+  The canister ID of the governance canister to query. Use `"rrkah-fqaaa-aaaaa-aaaaq-cai"` for the NNS governance canister.
+</ParamField>
+
+<ParamField path="info" type="ListProposalInfo" required>
+  Filter criteria for listing proposals. See [GovernanceTypes](/api/governance-types#listproposalinfo) for details.
+  
+  Key fields include:
+  - `limit`: Maximum number of proposals to return (Nat32)
+  - `before_proposal`: Return proposals before this proposal ID
+  - `include_status`: Array of proposal status codes to include
+  - `include_reward_status`: Array of reward status codes to include
+  - `exclude_topic`: Array of topic IDs to exclude
+  - `omit_large_fields`: Whether to omit large fields for performance
+</ParamField>
+
+<ResponseField name="Result" type="Result<ListProposalInfoResponse, Text>">
+  Returns `#ok(ListProposalInfoResponse)` containing an array of [ProposalInfo](/api/governance-types#proposalinfo) objects, or `#err(Text)` with an error message if the request fails.
+</ResponseField>
+
+**Example:**
+
+```motoko
+let proposalFilter = {
+    limit = 10;
+    before_proposal = null;
+    include_status = [];
+    include_reward_status = [];
+    exclude_topic = [];
+    omit_large_fields = ?true;
+    include_all_manage_neuron_proposals = ?false;
+};
+
+let result = await* governanceService.listProposals(
+    "rrkah-fqaaa-aaaaa-aaaaq-cai",
+    proposalFilter
+);
+
+switch (result) {
+    case (#ok(response)) {
+        // Process proposals
+        for (proposal in response.proposal_info.vals()) {
+            // Handle each proposal
+        };
+    };
+    case (#err(msg)) {
+        // Handle error
+    };
+};
+```
+
+---
+
+### getPendingProposals
+
+Retrieves all currently pending proposals from a governance canister.
+
+```motoko
+public func getPendingProposals(
+    governanceId : Text
+) : async* Result.Result<[GT.ProposalInfo], Text>
+```
+
+<ParamField path="governanceId" type="Text" required>
+  The canister ID of the governance canister to query.
+</ParamField>
+
+<ResponseField name="Result" type="Result<[ProposalInfo], Text>">
+  Returns `#ok([ProposalInfo])` containing an array of pending proposals, or `#err(Text)` with an error message if the request fails.
+</ResponseField>
+
+**Example:**
+
+```motoko
+let result = await* governanceService.getPendingProposals(
+    "rrkah-fqaaa-aaaaa-aaaaq-cai"
+);
+
+switch (result) {
+    case (#ok(proposals)) {
+        // Process pending proposals
+        for (proposal in proposals.vals()) {
+            // Check proposal status, tally votes, etc.
+        };
+    };
+    case (#err(msg)) {
+        Debug.print("Error: " # msg);
+    };
+};
+```
+
+---
+
+### getMetadata
+
+Retrieves metadata about a governance canister, including its name and description.
+
+```motoko
+public func getMetadata(
+    governanceId : Text
+) : async* Result.Result<{name: ?Text; description: ?Text}, Text>
+```
+
+<ParamField path="governanceId" type="Text" required>
+  The canister ID of the governance canister to query. For the NNS governance canister (`rrkah-fqaaa-aaaaa-aaaaq-cai`), returns hardcoded values.
+</ParamField>
+
+<ResponseField name="Result" type="Result<{name: ?Text; description: ?Text}, Text>">
+  Returns `#ok({name: ?Text; description: ?Text})` containing the governance canister's metadata, or `#err(Text)` with an error message if the request fails.
+  
+  For the NNS governance canister:
+  - `name`: `?"NNS"`
+  - `description`: `?"Network Nervous System"`
+</ResponseField>
+
+**Example:**
+
+```motoko
+let result = await* governanceService.getMetadata(
+    "rrkah-fqaaa-aaaaa-aaaaq-cai"
+);
+
+switch (result) {
+    case (#ok(metadata)) {
+        switch (metadata.name) {
+            case (?name) Debug.print("Name: " # name);
+            case null {};
+        };
+    };
+    case (#err(msg)) {
+        Debug.print("Error: " # msg);
+    };
+};
+```
+
+---
+
+### getGovernanceFunctions
+
+Retrieves the list of available nervous system functions from a governance canister.
+
+```motoko
+public func getGovernanceFunctions(
+    governanceId : Text
+) : async* Result.Result<GT.ListNervousSystemFunctionsResponse, Text>
+```
+
+<ParamField path="governanceId" type="Text" required>
+  The canister ID of the governance canister to query.
+</ParamField>
+
+<ResponseField name="Result" type="Result<ListNervousSystemFunctionsResponse, Text>">
+  Returns `#ok(ListNervousSystemFunctionsResponse)` containing the list of available nervous system functions and reserved IDs, or `#err(Text)` with an error message if the request fails.
+  
+  The response includes:
+  - `functions`: Array of [NervousSystemFunction](/api/governance-types#nervoussystemfunction) objects
+  - `reserved_ids`: Array of Nat64 IDs that are reserved
+</ResponseField>
+
+**Example:**
+
+```motoko
+let result = await* governanceService.getGovernanceFunctions(
+    "rrkah-fqaaa-aaaaa-aaaaq-cai"
+);
+
+switch (result) {
+    case (#ok(response)) {
+        for (func in response.functions.vals()) {
+            Debug.print("Function: " # func.name);
+        };
+    };
+    case (#err(msg)) {
+        Debug.print("Error: " # msg);
+    };
+};
+```
+
+## Constants
+
+### NNS_GOVERNANCE_ID
+
+The canister ID of the NNS governance canister:
+
+```motoko
+let NNS_GOVERNANCE_ID = "rrkah-fqaaa-aaaaa-aaaaq-cai";
+```
+
+## Error Handling
+
+All methods return a `Result` type that must be handled:
+
+- `#ok(value)`: The operation succeeded, contains the response data
+- `#err(message)`: The operation failed, contains an error message string
+
+Common error scenarios:
+- Invalid canister ID
+- Network connectivity issues
+- Canister is not a governance canister
+- Insufficient permissions
+
+## Related Types
+
+See [GovernanceTypes](/api/governance-types) for detailed type definitions including:
+- [ProposalInfo](/api/governance-types#proposalinfo)
+- [ListProposalInfo](/api/governance-types#listproposalinfo)
+- [Tally](/api/governance-types#tally)
+- [NervousSystemFunction](/api/governance-types#nervoussystemfunction)
+
+## Use Cases
+
+### Bot Notification System
+
+Create a bot that monitors NNS proposals and sends notifications:
+
+```motoko
+let service = GS.GovernanceService();
+
+// Check for new proposals every hour
+public func checkNewProposals() : async () {
+    let result = await* service.getPendingProposals(
+        "rrkah-fqaaa-aaaaa-aaaaq-cai"
+    );
+    
+    switch (result) {
+        case (#ok(proposals)) {
+            for (proposal in proposals.vals()) {
+                // Send notification about new proposal
+                await notifyUsers(proposal);
+            };
+        };
+        case (#err(msg)) {
+            Debug.print("Failed to fetch proposals: " # msg);
+        };
+    };
+};
+```
+
+### Governance Dashboard
+
+Display governance statistics and proposal information:
+
+```motoko
+let service = GS.GovernanceService();
+
+public func getGovernanceOverview() : async Text {
+    let metadata = await* service.getMetadata("rrkah-fqaaa-aaaaa-aaaaq-cai");
+    let proposals = await* service.getPendingProposals("rrkah-fqaaa-aaaaa-aaaaq-cai");
+    
+    // Format and return governance information
+    switch (metadata, proposals) {
+        case (#ok(meta), #ok(props)) {
+            "Governance: " # Option.get(meta.name, "Unknown") #
+            "\nPending Proposals: " # Nat.toText(props.size())
+        };
+        case _ "Error loading governance data";
+    };
+};
+```

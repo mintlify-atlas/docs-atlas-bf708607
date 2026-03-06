@@ -1,0 +1,354 @@
+---
+title: 'Joining Communities'
+description: 'Connect your bot to OpenChat groups, communities, and channels'
+---
+
+## Overview
+
+After initialization, your bot must join groups or communities before it can send messages. OpenChat supports three join operations:
+
+- **Groups** - Standalone chat groups
+- **Communities** - Collections of channels with shared membership
+- **Channels** - Individual chat rooms within a community
+
+<Note>
+  For private groups/communities, an admin must first invite your bot using the OpenChat UI before it can join.
+</Note>
+
+## Joining a Group
+
+Groups are standalone chat spaces identified by their canister ID.
+
+<Steps>
+  <Step title="Obtain the group canister ID">
+    Get the group's canister ID from OpenChat. Example: `"evg6t-laaaa-aaaar-a4j5q-cai"`
+  </Step>
+
+  <Step title="Look up the local user index">
+    Before joining, the bot must find the group's local user index canister:
+
+    ```motoko
+    // From BotService.mo:499-516
+    func lookupLocalUserIndex(group: Text) : async* Result.Result<Principal, Text> {
+      let res = await* ocService.publicGroupSummary(group, { invite_code = null});
+      switch(res){
+        case(#ok(data)){
+          switch(data){
+            case (#Success(response)){
+              #ok(response.summary.local_user_index_canister_id)
+            };
+            case (#NotAuthorized(_)){
+              #err("NotAuthorized")
+            };
+          }
+        };
+        case(#err(msg)){ #err(msg) };
+      }
+    };
+    ```
+
+    This step is handled automatically by `joinGroup`.
+  </Step>
+
+  <Step title="Call joinGroup">
+    Join the group with an optional invite code:
+
+    ```bash
+    # With an invite code
+    dfx canister call OCBot tryJoinGroup '("abc123", opt 123456789)' --ic
+
+    # Without an invite code (for public groups)
+    dfx canister call OCBot tryJoinGroup '("abc123", null)' --ic
+    ```
+  </Step>
+</Steps>
+
+### Group Join Implementation
+
+```motoko
+// From BotService.mo:159-185
+public func joinGroup(groupCanisterId : Text, inviteCode : ?Nat64) : async* Result.Result<Text, Text>{
+  let indexCanister = await* lookupLocalUserIndex(groupCanisterId);
+  switch(indexCanister){
+    case(#ok(id)){
+      let #ok(res) = await* ocService.joinGroup(Principal.toText(id), {
+        chat_id = Principal.fromText(groupCanisterId);
+        invite_code = inviteCode;
+        correlation_id = 0
+      }) else{
+        return #err("Trapped");
+      };
+
+      switch(res){
+        case(#Success(_)){
+          Map.set(botModel.groups, thash, groupCanisterId, ());
+          #ok("OK")
+        };
+        case(#AlreadyInGroup or #AlreadyInGroupV2(_)){
+          #err("Already in group")
+        };
+        case(_){ #err("Error") }
+      };
+    };
+    case(#err(msg)){ #err(msg) }
+  };
+};
+```
+
+### Group Join Responses
+
+| Response | Description |
+|----------|-------------|
+| `#Success` | Successfully joined group |
+| `#AlreadyInGroup` | Bot is already a member |
+| `#NotAuthorized` | Group is private, invitation required |
+| `#UserBlocked` | Bot has been blocked from group |
+
+## Joining a Community
+
+Communities contain multiple channels and require two-step joining process.
+
+<Steps>
+  <Step title="Get community canister ID">
+    Obtain the community's canister ID from OpenChat.
+  </Step>
+
+  <Step title="Look up the local community index">
+    The bot finds the community's local user index:
+
+    ```motoko
+    // From BotService.mo:187-204
+    func localCommunityIndex(communityCanisterId : Text) : async* Result.Result<Principal, Text>{
+      let res = await* ocService.publicCommunitySummary(communityCanisterId, { invite_code = null});
+      switch(res){
+        case(#ok(data)){
+          switch(data){
+            case (#Success(response)){
+              #ok(response.local_user_index_canister_id)
+            };
+            case (#PrivateCommunity(_)){
+              #err("PrivateCommunity")
+            };
+          }
+        };
+        case(#err(msg)){ #err(msg) };
+      }
+    };
+    ```
+  </Step>
+
+  <Step title="Join the community">
+    ```bash
+    # With an invite code
+    dfx canister call OCBot tryJoinCommunity '("community-id", opt 123456789)' --ic
+
+    # Without an invite code (for public communities)
+    dfx canister call OCBot tryJoinCommunity '("community-id", null)' --ic
+    ```
+  </Step>
+</Steps>
+
+### Community Join Implementation
+
+```motoko
+// From BotService.mo:208-263
+public func joinCommunity(
+  communityCanisterId : Text,
+  inviteCode : ?Nat64,
+  botPrincipal : Principal
+) : async* Result.Result<Text, Text>{
+  let indexCanister = await* localCommunityIndex(communityCanisterId);
+  switch(indexCanister){
+    case(#ok(id)){
+      let res = await* ocService.joinCommunity(Principal.toText(id), {
+        community_id = Principal.fromText(communityCanisterId);
+        user_id = botPrincipal;
+        principal = botPrincipal;
+        invite_code = inviteCode;
+        is_platform_moderator = false;
+        is_bot = true;
+        diamond_membership_expires_at = null;
+        verified_credential_args = null;
+      });
+      switch(res){
+        case(#ok(data)){
+          switch(data){
+            case(#Success(_)){ #ok("OK") };
+            case(#AlreadyInCommunity(_)){ #err("Already in community") };
+            case(#GateCheckFailed(_)){ #err("GateCheckFailed") };
+            case(#NotInvited){ #err("NotInvited") };
+            case(#UserBlocked){ #err("UserBlocked") };
+            case(#MemberLimitReached(limit)){ #err("MemberLimitReached") };
+            case(#CommunityFrozen){ #err("CommunityFrozen") };
+            case(#InternalError(e)){ #err("InternalError: " # e) };
+          };
+        };
+        case(#err(e)){ #err(e) }
+      };
+    };
+    case(#err(msg)){ #err(msg) }
+  };
+};
+```
+
+### Community Join Responses
+
+| Response | Description |
+|----------|-------------|
+| `#Success` | Successfully joined community |
+| `#AlreadyInCommunity` | Bot is already a member |
+| `#GateCheckFailed` | Bot doesn't meet gate requirements (tokens, credentials) |
+| `#NotInvited` | Community is private, invitation required |
+| `#UserBlocked` | Bot has been blocked |
+| `#MemberLimitReached` | Community is at maximum capacity |
+| `#CommunityFrozen` | Community has been frozen |
+
+## Joining a Channel
+
+<Warning>
+  You must join the parent community before joining any of its channels.
+</Warning>
+
+<Steps>
+  <Step title="Ensure community membership">
+    First join the community using `joinCommunity` as shown above.
+  </Step>
+
+  <Step title="Join the channel">
+    ```bash
+    # With an invite code
+    dfx canister call OCBot tryJoinChannel '("${community_id}", ${channel_id}, opt 123456789)' --ic
+
+    # Without an invite code
+    dfx canister call OCBot tryJoinChannel '("${community_id}", ${channel_id}, null)' --ic
+    ```
+
+    Example:
+    ```bash
+    dfx canister call OCBot tryJoinChannel '("uxyan-oyaaa-aaaaf-aaa5q-cai", 123, null)' --ic
+    ```
+  </Step>
+</Steps>
+
+### Channel Join Implementation
+
+```motoko
+// From BotService.mo:265-334
+public func joinChannel(
+  communityCanisterId : Text,
+  channelId: Nat,
+  inviteCode : ?Nat64
+) : async* Result.Result<Text, Text>{
+  let indexCanister = await* localCommunityIndex(communityCanisterId);
+  switch(indexCanister){
+    case(#ok(id)){
+      let res = await* ocService.joinChannel(Principal.toText(id), {
+        community_id = Principal.fromText(communityCanisterId);
+        channel_id = channelId;
+        user_id = Principal.fromText("7g2oq-raaaa-aaaap-qb7sq-cai");
+        principal = Principal.fromText("7g2oq-raaaa-aaaap-qb7sq-cai");
+        invite_code = inviteCode;
+        is_platform_moderator = false;
+        is_bot = true;
+        diamond_membership_expires_at = null;
+        verified_credential_args = null;
+      });
+      switch(res){
+        case(#ok(data)){
+          switch(data){
+            case(#Success(_)){ #ok("OK") };
+            case(#SuccessJoinedCommunity(_)){ #ok("OK") };
+            case(#AlreadyInChannel(_)){ #err("Already in community") };
+            case(#UserNotInCommunity){ #err("UserNotInCommunity") };
+            case(#ChannelNotFound){ #err("UserNotInCommunity") };
+            // ... other error cases
+          };
+        };
+        case(#err(e)){ #err(e) }
+      };
+    };
+    case(#err(msg)){ #err(msg) }
+  };
+};
+```
+
+### Channel Join Responses
+
+| Response | Description |
+|----------|-------------|
+| `#Success` | Successfully joined channel |
+| `#SuccessJoinedCommunity` | Joined both community and channel |
+| `#AlreadyInChannel` | Bot is already a member |
+| `#UserNotInCommunity` | Must join community first |
+| `#ChannelNotFound` | Channel does not exist |
+| `#UserSuspended` | Bot has been suspended |
+
+## Complete Workflow Example
+
+Here's a complete example joining a community and channel:
+
+```motoko
+// 1. Get bot principal
+let botPrincipal = Principal.fromActor(this);
+
+// 2. Join the community
+let communityResult = await* botService.joinCommunity(
+  "uxyan-oyaaa-aaaaf-aaa5q-cai",
+  null, // No invite code for public communities
+  botPrincipal
+);
+
+switch(communityResult){
+  case(#ok(msg)){
+    logService.logInfo("Joined community: " # msg, null);
+    
+    // 3. Join a channel in that community
+    let channelResult = await* botService.joinChannel(
+      "uxyan-oyaaa-aaaaf-aaa5q-cai",
+      42, // channel ID
+      null
+    );
+    
+    switch(channelResult){
+      case(#ok(msg)){
+        logService.logInfo("Joined channel: " # msg, null);
+      };
+      case(#err(e)){
+        logService.logError("Failed to join channel: " # e, null);
+      };
+    };
+  };
+  case(#err(e)){
+    logService.logError("Failed to join community: " # e, null);
+  };
+};
+```
+
+## Error Handling Best Practices
+
+```motoko
+// Handle already-member gracefully
+let result = await* botService.joinGroup(groupId, null);
+switch(result){
+  case(#ok(_)){ /* Success */ };
+  case(#err("Already in group")){
+    // Not actually an error - bot is already member
+    logService.logInfo("Bot already in group", null);
+  };
+  case(#err(msg)){
+    // Actual error
+    logService.logError("Failed to join: " # msg, null);
+  };
+};
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send Messages" icon="message" href="/guides/sending-messages">
+    Start sending messages to your joined groups
+  </Card>
+  <Card title="Manage Subscriptions" icon="bell" href="/guides/managing-subscriptions">
+    Set up notification subscriptions
+  </Card>
+</CardGroup>

@@ -1,0 +1,300 @@
+---
+title: 'OCTypes'
+description: 'Type definitions for OpenChat service integration'
+---
+
+## Overview
+
+The `OCTypes` module defines the core type interfaces used by the OpenChat Bot SDK. It provides type-safe abstractions over the OpenChat canister APIs, ensuring proper integration patterns.
+
+## Type Definitions
+
+### PublicSummaryResponse
+
+Response type for public group summary requests.
+
+```motoko
+public type PublicSummaryResponse = {
+  #Success : OCApi.PublicSummarySuccessResult;
+  #NotAuthorized;
+};
+```
+
+<ResponseField name="PublicSummaryResponse" type="variant">
+  Result of requesting public group information
+  
+  <Expandable title="Variants">
+    **#Success**
+    
+    Contains `PublicSummarySuccessResult` with group details:
+    - Group name, description, avatar
+    - Participant count
+    - Latest message information
+    - Group permissions and rules
+    - Access gate requirements
+    - Event indices and timestamps
+    
+    **#NotAuthorized**
+    
+    User is not authorized to view this group's information
+  </Expandable>
+</ResponseField>
+
+### OCService
+
+The main service interface type defining all OpenChat bot operations.
+
+```motoko
+public type OCService = {
+  registerBot : (
+    userIndexCanister : Text,
+    { username : Text; displayName : ?Text }
+  ) -> async* Result.Result<OCApi.InitializeBotResponse, Text>;
+  
+  userSummary : (
+    userIndexCanister : Text,
+    { userId : ?OCApi.UserId; username : ?Text }
+  ) -> async* Result.Result<OCApi.UserSummaryResponse, Text>;
+  
+  setAvatar : (
+    userIndexCanister : Text,
+    OCApi.SetAvatarArgs
+  ) -> async* Result.Result<OCApi.SetAvatarResponse, Text>;
+  
+  publicGroupSummary : (
+    groupCanisterId : Text,
+    args : { invite_code : ?Nat64 }
+  ) -> async* Result.Result<PublicSummaryResponse, Text>;
+  
+  publicCommunitySummary : (
+    groupCanisterId : Text,
+    args : { invite_code : ?Nat64 }
+  ) -> async* Result.Result<OCApi.CommunitySummaryResponse, Text>;
+  
+  joinGroup : (
+    groupCanisterId : Text,
+    OCApi.JoinGroupArgs
+  ) -> async* Result.Result<OCApi.JoinGroupResponse, Text>;
+  
+  sendGroupMessage : (
+    groupCanisterId : Text,
+    sender : Text,
+    senderDisplayName : ?Text,
+    content : OCApi.MessageContentInitial,
+    messageId : Nat,
+    threadIndexId : ?Nat32
+  ) -> async* Result.Result<OCApi.SendMessageResponse, Text>;
+  
+  editGroupMessage : (
+    groupCanisterId : Text,
+    messageId : OCApi.MessageId,
+    threadRootIndex : ?OCApi.MessageIndex,
+    newContent : OCApi.MessageContentInitial
+  ) -> async* Result.Result<OCApi.EditMessageResponse, Text>;
+  
+  messagesByMessageIndex : (
+    Text,
+    OCApi.MessagesByMessageIndexArgs
+  ) -> async* Result.Result<OCApi.MessagesByMessageIndexResponse, Text>;
+  
+  sendChannelMessage : (
+    communityCanisterId : Text,
+    channelId : Nat,
+    sender : Text,
+    senderDisplayName : ?Text,
+    content : OCApi.MessageContent,
+    messageId : Nat,
+    threadIndexId : ?Nat32
+  ) -> async* Result.Result<OCApi.SendMessageResponse, Text>;
+  
+  editChannelMessage : (
+    communityCanisterId : Text,
+    channelId : Nat,
+    messageId : OCApi.MessageId,
+    threadRootIndex : ?OCApi.MessageIndex,
+    newContent : OCApi.MessageContentInitial
+  ) -> async* Result.Result<OCApi.EditChannelMessageResponse, Text>;
+  
+  joinCommunity : (
+    communityCanisterId : Text,
+    args : OCApi.JoinCommunityArgs
+  ) -> async* Result.Result<OCApi.JoinCommunityResponse, Text>;
+  
+  joinChannel : (
+    channelCanisterId : Text,
+    args : OCApi.JoinChannelArgs
+  ) -> async* Result.Result<OCApi.JoinChannelResponse, Text>;
+};
+```
+
+## Type Patterns
+
+### Canister ID Pattern
+
+All methods accept canister IDs as `Text` (Principal in text format):
+
+```motoko
+let userIndexCanister = "renrk-eyaaa-aaaaa-aaada-cai";
+let groupCanisterId = "2ouqz-viaaa-aaaaa-qaafa-cai";
+```
+
+### Result Pattern
+
+All async operations return `Result.Result<T, Text>` for consistent error handling:
+
+```motoko
+switch (await* service.someMethod(args)) {
+  case (#ok(response)) {
+    // Handle successful response
+    // response type varies by method
+  };
+  case (#err(errorMessage)) {
+    // Handle error
+    Debug.print("Error: " # errorMessage);
+  };
+};
+```
+
+### Optional Fields Pattern
+
+Many fields use Motoko's optional type (`?T`) for nullable values:
+
+```motoko
+// Display name is optional
+let args = {
+  username = "my_bot";
+  displayName = ?"My Bot";  // Some value
+  // or
+  displayName = null;  // No value
+};
+```
+
+### Async Star Pattern
+
+Methods use `async*` to enable composition in async contexts:
+
+```motoko
+public func myBotFunction() : async* () {
+  // Can directly await* service methods
+  let result = await* ocService.registerBot(...);
+  // ... more operations
+};
+```
+
+## OpenChat Canister Types
+
+The service wraps several OpenChat canister types:
+
+### UserIndexCanister
+
+Manages user registration and profiles.
+
+**Methods used:**
+- `c2c_register_bot` - Register new bot
+- `user` - Query user information
+- `c2c_set_avatar` - Set user/bot avatar
+
+### GroupIndexCanister
+
+Manages group chats.
+
+**Methods used:**
+- `public_summary` - Get group information
+- `send_message_v2` - Send group messages
+- `edit_message_v2` - Edit group messages
+- `messages_by_message_index` - Retrieve specific messages
+
+### CommunityIndexCanister
+
+Manages communities and channels.
+
+**Methods used:**
+- `summary` - Get community information
+- `join_community` - Join a community
+- `join_channel` - Join a channel
+- `send_message` - Send channel messages
+- `edit_message` - Edit channel messages
+
+### LocalUserIndexCanister
+
+Local user operations.
+
+**Methods used:**
+- `join_group` - Join a group
+
+## Type Safety
+
+The type system ensures:
+
+1. **Canister ID validation** - Principal types prevent invalid references
+2. **Message content validation** - Variant types ensure valid message formats
+3. **Response handling** - Exhaustive pattern matching on response variants
+4. **Optional field handling** - Explicit handling of nullable values
+
+## Integration Guidelines
+
+### Type Imports
+
+```motoko
+import OCTypes "backend/OC/OCTypes";
+import OCApi "backend/OC/OCApi";
+import Result "mo:base/Result";
+```
+
+### Service Type Usage
+
+You can use the `OCService` type to define interfaces:
+
+```motoko
+module {
+  // Define a function that accepts any OCService implementation
+  public func processWithService(service : OCTypes.OCService) : async* () {
+    // Use service methods
+  };
+};
+```
+
+### Custom Type Extensions
+
+Extend types for your bot's specific needs:
+
+```motoko
+type MyBotConfig = {
+  ocService : OCTypes.OCService;
+  groupId : Text;
+  adminUsers : [Text];
+};
+```
+
+## Error Handling Convention
+
+All service methods follow this convention:
+
+```motoko
+Result.Result<SuccessType, Text>
+```
+
+Where:
+- `SuccessType` - The specific OpenChat API response type
+- `Text` - Error message from exception handling
+
+**Success variants** are defined by OpenChat API (e.g., `#Success`, `#AlreadyInGroup`, etc.)
+
+**Error case** (`#err`) contains the exception message as text.
+
+## Thread Safety
+
+All types are immutable and thread-safe. Message IDs should be unique per bot instance:
+
+```motoko
+var messageIdCounter = 0;
+
+func getNextMessageId() : Nat {
+  messageIdCounter += 1;
+  messageIdCounter
+};
+```
+
+## Related Types
+
+For detailed message content types, response structures, and OpenChat-specific types, see [OCApi](/api/oc-api).

@@ -1,0 +1,541 @@
+---
+title: 'Managing Subscriptions'
+description: 'Implement subscription systems for targeted message delivery'
+---
+
+## Overview
+
+The OpenChat Bot SDK provides subscription management for targeting messages to specific groups or channels. Both TallyBot and ProposalBot use subscription systems to deliver updates to interested communities.
+
+## Subscription Types
+
+Subscriptions can target two types of destinations:
+
+```motoko
+// From TallyBot.mo:50-53
+type Sub = {
+  #Channel : { communityCanisterId : Text; channelId : Nat };
+  #Group : Text;
+};
+```
+
+### Channel Subscription
+
+Subscribe to a channel within a community:
+
+```motoko
+#Channel({
+  communityCanisterId = "uxyan-oyaaa-aaaaf-aaa5q-cai";
+  channelId = 42;
+})
+```
+
+### Group Subscription
+
+Subscribe to a standalone group:
+
+```motoko
+#Group("evg6t-laaaa-aaaar-a4j5q-cai")
+```
+
+## TallyBot Subscriptions
+
+TallyBot allows subscribing groups/channels to specific tally IDs for governance proposal voting updates.
+
+### Data Model
+
+```motoko
+// From TallyBot.mo:55-59
+type TallyBotModel = {
+  nnsGroupIndexes : Map.Map<Nat64, {
+    nnsGroupIndex : OCApi.MessageIndex;
+    dependentTallies : Map.Map<TallyTypes.TallyId, ()>
+  }>;
+  subscribersByTally : Map.Map<TallyTypes.TallyId, List.List<Sub>>;
+  var shouldPostInNNSGroup : Bool;
+};
+```
+
+Subscribers are stored per tally ID, allowing one-to-many relationships (one tally can notify many subscribers).
+
+### Adding a Subscriber
+
+```motoko
+// From TallyBot.mo:71-107
+public func addSubscriber(
+  tallyId : TallyTypes.TallyId,
+  subscriber : Sub
+) : Result.Result<(), Text> {
+  switch (Map.get(tallyModel.subscribersByTally, thash, tallyId)) {
+    case (?exists) {
+      // Check if subscriber already exists
+      let res = List.find<Sub>(
+        exists,
+        func e : Bool {
+          switch (e, subscriber) {
+            case (#Channel(v), #Channel(v2)) {
+              if (v.channelId == v2.channelId and 
+                  v.communityCanisterId == v2.communityCanisterId) {
+                return true;
+              };
+              return false;
+            };
+            case (#Group(v), #Group(v2)) {
+              if (Text.equal(v, v2)) {
+                return true;
+              };
+              return false;
+            };
+            case (_) { return false; };
+          };
+        },
+      );
+      if (Option.isSome(res)) {
+        return #err("Existing sub");
+      };
+      Map.set(tallyModel.subscribersByTally, thash, tallyId, List.push(subscriber, exists));
+    };
+    case (_) {
+      Map.set(tallyModel.subscribersByTally, thash, tallyId, List.make(subscriber));
+    };
+  };
+  return #ok();
+};
+```
+
+### DFX Examples
+
+<CodeGroup>
+```bash Channel Subscription
+# Subscribe a channel to a tally ID
+dfx canister call OCBot addSubscriber '(
+  "my_tally_id",
+  variant {
+    Channel = record {
+      communityCanisterId = "uxyan-oyaaa-aaaaf-aaa5q-cai";
+      channelId = 42
+    }
+  }
+)' --ic
+```
+
+```bash Group Subscription
+# Subscribe a group to a tally ID
+dfx canister call OCBot addSubscriber '(
+  "my_tally_id",
+  variant {
+    Group = "evg6t-laaaa-aaaar-a4j5q-cai"
+  }
+)' --ic
+```
+</CodeGroup>
+
+### Fetching Subscriptions
+
+```motoko
+// From TallyBot.mo:156-177
+public func getSubscribers(tallyId : ?TallyTypes.TallyId) : [(TallyTypes.TallyId, [Sub])] {
+  let buf = Buffer.Buffer<(TallyTypes.TallyId, [Sub])>(50);
+
+  switch(tallyId) {
+    case (?tallyId) {
+      // Get subscribers for specific tally
+      switch (Map.get(tallyModel.subscribersByTally, thash, tallyId)) {
+        case (?list) {
+          buf.add((tallyId, List.toArray(list)));
+        };
+        case (_) { return []; };
+      };
+    };
+    case (_) {
+      // Get all subscriptions
+      for ((k, v) in Map.entries(tallyModel.subscribersByTally)) {
+        buf.add((k, List.toArray(v)));
+      };
+    };
+  };
+  Buffer.toArray(buf);
+};
+```
+
+<CodeGroup>
+```bash Get Specific Tally
+# Get subscribers for a specific tally
+dfx canister call OCBot getSubscribers '(opt "tally_123")' --ic
+```
+
+```bash Get All Subscriptions
+# Get all subscriptions
+dfx canister call OCBot getSubscribers '(null)' --ic
+```
+</CodeGroup>
+
+### Deleting a Subscription
+
+```motoko
+// From TallyBot.mo:109-154
+public func deleteSubscription(
+  tallyId : TallyTypes.TallyId,
+  subscriber : Sub
+) : Result.Result<(), Text> {
+  switch (Map.get(tallyModel.subscribersByTally, thash, tallyId)) {
+    case (?exists) {
+      var check = false;
+      let newList = List.filter<Sub>(
+        exists,
+        func e : Bool {
+          switch (e, subscriber) {
+            case (#Channel(v), #Channel(v2)) {
+              if (v.channelId == v2.channelId and 
+                  v.communityCanisterId == v2.communityCanisterId) {
+                check := true;
+                return false; // Remove this item
+              };
+              return true; // Keep this item
+            };
+            case (#Group(v), #Group(v2)) {
+              if (Text.equal(v, v2)) {
+                check := true;
+                return false;
+              };
+              return true;
+            };
+            case (_) { return true; };
+          };
+        },
+      );
+
+      if (check) {
+        if (List.size(newList) == 0) {
+          Map.delete(tallyModel.subscribersByTally, thash, tallyId);
+        } else {
+          Map.set(tallyModel.subscribersByTally, thash, tallyId, newList);
+        };
+        #ok();
+      } else {
+        return #err("The tally isnt subscribed to this group/channel");
+      };
+    };
+    case (_) {
+      #err("These tally id has no active subscriptions");
+    };
+  };
+};
+```
+
+<CodeGroup>
+```bash Delete Channel Subscription
+dfx canister call OCBot deleteSubscription '(
+  "my_tally_id",
+  variant {
+    Channel = record {
+      communityCanisterId = "uxyan-oyaaa-aaaaf-aaa5q-cai";
+      channelId = 42
+    }
+  }
+)' --ic
+```
+
+```bash Delete Group Subscription
+dfx canister call OCBot deleteSubscription '(
+  "my_tally_id",
+  variant {
+    Group = "evg6t-laaaa-aaaar-a4j5q-cai"
+  }
+)' --ic
+```
+</CodeGroup>
+
+### Sending to Subscribers
+
+TallyBot iterates through subscribers and sends updates:
+
+```motoko
+// From TallyBot.mo:213-238
+func sendMessageToSub(
+  sub : Sub,
+  message : Text,
+  msgOrThreadIndex : ?OCApi.MessageIndex
+) : async* Result.Result<T.SendMessageResponse, Text> {
+  switch (sub) {
+    case (#Channel(data)) {
+      let res = await* botService.sendChannelMessage(
+        data.communityCanisterId,
+        data.channelId,
+        #Text({ text = message }),
+        msgOrThreadIndex
+      );
+      // Handle response...
+    };
+    case (#Group(id)) {
+      let res = await* botService.sendTextGroupMessage(
+        id,
+        message,
+        msgOrThreadIndex
+      );
+      // Handle response...
+    };
+  };
+};
+```
+
+## ProposalBot Subscriptions
+
+ProposalBot uses a different subscription model with topic filters for governance proposals.
+
+### Data Model
+
+```motoko
+// From ProposalBot.mo:28-31
+public type Subscriber = {
+  #Group : {topics : [Int32]; groupCanister : Text;};
+  #Channel : {topics : [Int32]; communityCanister : Text; channelId : Nat;};
+};
+
+// From ProposalBot.mo:34-41
+public type ProposalBotModel = {
+  var lastProposalId : ?Nat64;
+  var timerId : ?Nat;
+  var latestNNSMessageIndex : ?Nat32;
+  proposalsLookup : ProposalsLookup;
+  var numberOfTicksSinceUpdate : Nat;
+  subscribers : Map.Map<Text, Subscriber>;
+};
+```
+
+Subscribers can filter proposals by topic (e.g., RVM, SCM).
+
+### Adding a Subscriber with Topics
+
+```motoko
+// From ProposalBot.mo:367-411
+public func addSubscriber(
+  subscriber : Subscriber,
+  inviteCode : ?Nat64,
+  botPrincipal : Principal
+) : async* Result.Result<(), Text>{
+  switch(subscriber){
+    case(#Group(data)){
+      if(Map.has(model.subscribers, thash, data.groupCanister)){
+        return #err("Subscriber already exists");
+      };
+      let res = await* botService.joinGroup(data.groupCanister, inviteCode);
+      switch(res){
+        case(#ok(_)){
+          Map.set(model.subscribers, thash, data.groupCanister, subscriber);
+        };
+        case(#err(err)){ return #err(err); }
+      }
+    };
+    case(#Channel(data)){
+      if(Map.has(model.subscribers, thash, Nat.toText(data.channelId))){
+        return #err("Subscriber already exists");
+      };
+      // Join community
+      let res = await* botService.joinCommunity(
+        data.communityCanister,
+        inviteCode,
+        botPrincipal
+      );
+      switch(res){
+        case(#ok(_)){
+          // Join channel
+          let res2 = await* botService.joinChannel(
+            data.communityCanister,
+            data.channelId,
+            inviteCode
+          );
+          switch(res2){
+            case(#ok(_)){
+              Map.set(model.subscribers, thash, Nat.toText(data.channelId), subscriber);
+            };
+            case(#err(err)){ return #err(err); }
+          };
+        };
+        case(#err(err)){ return #err(err); }
+      }
+    };
+  };
+  #ok();
+};
+```
+
+<Note>
+  ProposalBot automatically joins the group or channel when adding a subscriber.
+</Note>
+
+### Topic Filtering
+
+ProposalBot filters proposals by topic when sending to subscribers:
+
+```motoko
+// From ProposalBot.mo:196-245
+func sendMessages(
+  rvmList : [Proposal],
+  scmList : [Proposal],
+  scmBatchList : List.List<[Proposal]>
+) : async* (){
+  for(sub in Map.vals(model.subscribers)){
+    switch(sub){
+      case(#Group(group)){
+        for(tid in group.topics.vals()){
+          switch(T.topicIdToVariant(tid)){
+            case(#RVM){
+              // Send RVM proposals
+              for(p in rvmList.vals()){
+                await* createProposalGroupThread(group.groupCanister, p)
+              };
+            };
+            case(#SCM){
+              // Send SCM proposals
+              for(p in scmList.vals()){
+                await* createProposalGroupThread(group.groupCanister, p)
+              };
+            };
+            case(_){};
+          }
+        };
+      };
+      case(#Channel(channel)){
+        // Similar filtering for channels...
+      };
+    }
+  };
+};
+```
+
+### Managing Subscriber Topics
+
+```motoko
+// From ProposalBot.mo:413-431
+public func updateSubscriber(id : Text, newTopics : [Int32]) : Result.Result<(), Text> {
+  switch(Map.get(model.subscribers, thash, id)){
+    case(?val){
+      switch(val){
+        case(#Group(data)){
+          Map.set(model.subscribers, thash, id, #Group({data with topics = newTopics}));
+        };
+        case(#Channel(data)){
+          Map.set(model.subscribers, thash, id, #Channel({data with topics = newTopics}));
+        }
+      };
+      #ok();
+    };
+    case(_){ return #err("Subscriber does not exist"); };
+  }
+};
+```
+
+### Deleting Subscribers
+
+```motoko
+// From ProposalBot.mo:433-442
+public func deleteSubscriber(id : Text) : Result.Result<(), Text>{
+  switch(Map.remove(model.subscribers, thash, id)){
+    case(?val){ #ok(); };
+    case(_){ return #err("Subscriber does not exist"); };
+  }
+};
+```
+
+### Fetching Subscribers
+
+```motoko
+// From ProposalBot.mo:444-448
+public func getSubscribers() : [Subscriber]{
+  return Map.toArrayMap<Text, Subscriber, Subscriber>(
+    model.subscribers,
+    func (k : Text, v : Subscriber) : ?Subscriber { ?v }
+  );
+};
+```
+
+## Comparison: TallyBot vs ProposalBot
+
+| Feature | TallyBot | ProposalBot |
+|---------|----------|-------------|
+| **Key** | Tally ID (one-to-many) | Canister ID (one-to-one) |
+| **Topics** | No filtering | Topic-based filtering (RVM, SCM) |
+| **Auto-join** | No | Yes (joins on subscribe) |
+| **Use Case** | Voting tallies for specific DAOs | General proposal notifications |
+
+## Building Your Own Subscription System
+
+Here's a template for implementing subscriptions:
+
+```motoko
+type MySubscriptionModel = {
+  subscribers : Map.Map<SubscriptionKey, List.List<Sub>>;
+};
+
+func addSubscription(key : Text, sub : Sub) : Result.Result<(), Text> {
+  // 1. Check if subscription already exists
+  let existing = Map.get(model.subscribers, thash, key);
+  
+  // 2. Check for duplicates
+  switch(existing){
+    case(?list){
+      let isDuplicate = List.some(list, func(s : Sub) : Bool {
+        // Your comparison logic
+      });
+      if(isDuplicate){
+        return #err("Already subscribed");
+      };
+      Map.set(model.subscribers, thash, key, List.push(sub, list));
+    };
+    case(null){
+      Map.set(model.subscribers, thash, key, List.make(sub));
+    };
+  };
+  
+  #ok();
+};
+
+func notifySubscribers(key : Text, message : Text) : async* () {
+  switch(Map.get(model.subscribers, thash, key)){
+    case(?subscribers){
+      for(sub in List.toIter(subscribers)){
+        switch(sub){
+          case(#Channel(data)){
+            ignore await* botService.sendChannelMessage(
+              data.communityCanisterId,
+              data.channelId,
+              #Text({text = message}),
+              null
+            );
+          };
+          case(#Group(id)){
+            ignore await* botService.sendTextGroupMessage(
+              id,
+              message,
+              null
+            );
+          };
+        };
+      };
+    };
+    case(null){
+      // No subscribers
+    };
+  };
+};
+```
+
+## Best Practices
+
+1. **Duplicate Prevention** - Always check if a subscription exists before adding
+2. **Cleanup** - Remove subscriptions when they're no longer needed
+3. **Error Handling** - Handle messaging errors gracefully (subscribers may leave groups)
+4. **Persistence** - Subscriptions should survive canister upgrades (use stable storage)
+5. **Validation** - Verify groups/channels exist before adding subscriptions
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Bot Initialization" icon="rocket" href="/guides/bot-initialization">
+    Start from the beginning
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference/bot-service">
+    Explore the complete API
+  </Card>
+</CardGroup>

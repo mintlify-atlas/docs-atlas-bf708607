@@ -1,0 +1,491 @@
+---
+title: 'OpenChat Integration'
+description: 'How the SDK wraps and interacts with the OpenChat API'
+---
+
+## OpenChat API Overview
+
+The OpenChat Bot SDK provides a comprehensive wrapper around the OpenChat API, making it easy to interact with OpenChat groups, channels, and communities from your Motoko bot.
+
+<CardGroup cols={2}>
+  <Card title="OCService" icon="server">
+    High-level service for making OpenChat API calls
+  </Card>
+  <Card title="OCApi" icon="code">
+    Type definitions for all OpenChat API structures
+  </Card>
+  <Card title="OCTypes" icon="file-code">
+    Additional type definitions and response structures
+  </Card>
+</CardGroup>
+
+## OCService Module
+
+The `OCService` class (`backend/OC/OCService.mo`) provides the main interface for interacting with OpenChat:
+
+```motoko
+public class OCServiceImpl()
+```
+
+### Bot Registration
+
+```motoko
+public func registerBot(
+  userIndexCanister : Text, 
+  { username : Text; displayName : ?Text }
+) : async* Result.Result<OCApi.InitializeBotResponse, Text>
+```
+
+**Usage:**
+```motoko
+let res = await* ocService.registerBot(
+  "4bkt6-4aaaa-aaaaf-aaaiq-cai",
+  { username = "my_bot"; displayName = ?"My Bot" }
+);
+```
+
+<Note>
+  Bot registration requires 10 XDR (10 trillion cycles) to be attached to the call using `Cycles.add<system>(BOT_REGISTRATION_FEE)`.
+</Note>
+
+### Response Handling
+
+```motoko
+switch(res) {
+  case(#ok(#Success)) {
+    // Bot registered successfully
+  };
+  case(#ok(#AlreadyRegistered)) {
+    // Bot was already registered
+  };
+  case(#ok(#InsufficientCyclesProvided(required))) {
+    // Not enough cycles provided
+  };
+  case(#err(msg)) {
+    // API call failed
+  };
+};
+```
+
+## User Index Canister
+
+The User Index Canister is the entry point for bot operations on OpenChat:
+
+**Canister ID:** `4bkt6-4aaaa-aaaaf-aaaiq-cai`
+
+### Key Operations
+
+<Accordion title="c2c_register_bot">
+  Registers a canister as an OpenChat bot.
+  
+  ```motoko
+  c2c_register_bot : ({ 
+    username : Text; 
+    display_name : ?Text 
+  }) -> async InitializeBotResponse
+  ```
+  
+  **Fee:** 10 XDR in cycles
+</Accordion>
+
+<Accordion title="c2c_set_avatar">
+  Sets the bot's avatar image.
+  
+  ```motoko
+  c2c_set_avatar : ({ 
+    avatar_id: ?Nat 
+  }) -> async SetAvatarResponse
+  ```
+  
+  **Max Size:** 800 KB
+</Accordion>
+
+<Accordion title="user">
+  Queries user information by ID or username.
+  
+  ```motoko
+  user : query ({ 
+    user_id : ?UserId; 
+    username : ?Text 
+  }) -> async UserSummaryResponse
+  ```
+</Accordion>
+
+## Message Operations
+
+### Sending Messages to Groups
+
+```motoko
+public func sendGroupMessage(
+  groupCanisterId : Text,
+  sender : Text,
+  senderDisplayName : ?Text,
+  content : OCApi.MessageContentInitial,
+  messageId : Nat,
+  threadIndexId : ?Nat32
+) : async* Result.Result<OCApi.SendMessageResponse, Text>
+```
+
+**Example:**
+```motoko
+let content = #Text({ text = "Hello from bot!" });
+let messageId = generateUniqueId(); // Use Prng for random IDs
+
+let res = await* ocService.sendGroupMessage(
+  "group-canister-id",
+  "my_bot",
+  ?"My Bot",
+  content,
+  messageId,
+  null // Not in a thread
+);
+```
+
+### Sending Messages to Channels
+
+```motoko
+public func sendChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  sender : Text,
+  senderDisplayName : ?Text,
+  content : OCApi.MessageContent,
+  messageId : Nat,
+  threadIndexId : ?Nat32
+) : async* Result.Result<OCApi.SendMessageResponse, Text>
+```
+
+**Example:**
+```motoko
+let res = await* ocService.sendChannelMessage(
+  "community-canister-id",
+  42, // Channel ID
+  "my_bot",
+  ?"My Bot",
+  #Text({ text = "Channel message" }),
+  messageId,
+  null
+);
+```
+
+<Note>
+  The SDK automatically generates unique message IDs using the Prng library with time-based seeds to prevent collisions.
+</Note>
+
+## Message Content Types
+
+The SDK supports various message content types:
+
+```motoko
+public type MessageContentInitial = {
+  #Text : TextContent;
+  #Image : ImageContent;
+  #Video : VideoContent;
+  #Audio : AudioContent;
+  #File : FileContent;
+  #Poll : PollContent;
+  #Crypto : CryptoContent;
+  #Giphy : GiphyContent;
+  #GovernanceProposal : ProposalContent;
+  #Custom : CustomMessageContent;
+  // ... and more
+};
+```
+
+### Text Messages
+
+```motoko
+#Text({ text : Text })
+```
+
+### Governance Proposals
+
+```motoko
+#GovernanceProposal({
+  my_vote : ?Bool;
+  governance_canister_id : CanisterId;
+  proposal : {
+    #NNS : NnsProposal;
+    #SNS : SnsProposal;
+  };
+})
+```
+
+### Image Messages
+
+```motoko
+#Image({
+  height : Nat32;
+  width : Nat32;
+  mime_type : Text;
+  blob_reference : ?BlobReference;
+  thumbnail_data : Text;
+  caption : ?Text;
+})
+```
+
+## Editing Messages
+
+### Edit Group Message
+
+```motoko
+public func editGroupMessage(
+  groupCanisterId : Text,
+  messageId : MessageId,
+  threadRootIndex : ?MessageIndex,
+  newContent : MessageContentInitial
+) : async* Result.Result<EditMessageResponse, Text>
+```
+
+**Example:**
+```motoko
+let res = await* ocService.editGroupMessage(
+  "group-canister-id",
+  12345, // Message ID
+  null,  // Not in a thread
+  #Text({ text = "Updated message" })
+);
+```
+
+### Edit Channel Message
+
+```motoko
+public func editChannelMessage(
+  communityCanisterId : Text,
+  channelId : Nat,
+  messageId : MessageId,
+  threadRootIndex : ?MessageIndex,
+  newContent : MessageContentInitial
+) : async* Result.Result<EditChannelMessageResponse, Text>
+```
+
+<Card title="Message ID Tracking" icon="bookmark">
+  Use BotService's `saveMessageId()` and `getMessageId()` methods to track message IDs for later editing or reference.
+</Card>
+
+## Group and Community Management
+
+### Joining Groups
+
+```motoko
+public func joinGroup(
+  groupCanisterId : Text, 
+  args : JoinGroupArgs
+) : async* Result.Result<JoinGroupResponse, Text>
+```
+
+**JoinGroupArgs Structure:**
+```motoko
+public type JoinGroupArgs = {
+  chat_id : Principal;
+  invite_code : ?Nat64;
+  correlation_id : Nat64;
+};
+```
+
+### Joining Communities
+
+```motoko
+public func joinCommunity(
+  communityCanisterId : Text,
+  args : JoinCommunityArgs
+) : async* Result.Result<JoinCommunityResponse, Text>
+```
+
+**JoinCommunityArgs Structure:**
+```motoko
+public type JoinCommunityArgs = {
+  community_id : CommunityId;
+  user_id : UserId;
+  principal : Principal;
+  invite_code : ?Nat64;
+  is_platform_moderator : Bool;
+  is_bot : Bool;
+  diamond_membership_expires_at : ?Int;
+  verified_credential_args : ?VerifiedCredentialGateArgs;
+};
+```
+
+### Joining Channels
+
+```motoko
+public func joinChannel(
+  communityCanisterId : Text,
+  args : JoinChannelArgs
+) : async* Result.Result<JoinChannelResponse, Text>
+```
+
+## Retrieving Messages
+
+### Get Messages by Index
+
+```motoko
+public func messagesByMessageIndex(
+  groupCanisterId : Text,
+  args : MessagesByMessageIndexArgs
+) : async* Result.Result<MessagesByMessageIndexResponse, Text>
+```
+
+**Example:**
+```motoko
+let res = await* ocService.messagesByMessageIndex(
+  "group-canister-id",
+  {
+    thread_root_message_index = null;
+    messages = [10, 11, 12]; // Message indices
+    latest_known_update = null;
+  }
+);
+
+switch(res) {
+  case(#ok(#Success(response))) {
+    for (message in response.messages.vals()) {
+      // Process each message
+    };
+  };
+  case(_) { };
+};
+```
+
+## Group and Community Summaries
+
+### Get Public Group Summary
+
+```motoko
+public func publicGroupSummary(
+  groupCanisterId : Text,
+  args : { invite_code : ?Nat64 }
+) : async* Result.Result<PublicSummaryResponse, Text>
+```
+
+**Returns:**
+- Group metadata (name, description, avatar)
+- Member count
+- Latest message index
+- Local user index canister ID (needed for joining)
+- Access gate information
+
+### Get Community Summary
+
+```motoko
+public func publicCommunitySummary(
+  communityCanisterId : Text,
+  args : { invite_code : ?Nat64 }
+) : async* Result.Result<CommunitySummaryResponse, Text>
+```
+
+**Returns:**
+- Community metadata
+- Channel list
+- Member count
+- Local user index canister ID
+- Permissions and access gates
+
+## Local User Index Lookup
+
+Many operations require knowing the Local User Index canister ID:
+
+```motoko
+func lookupLocalUserIndex(group : Text) : async* Result.Result<Principal, Text> {
+  let res = await* ocService.publicGroupSummary(group, { invite_code = null });
+  switch(res) {
+    case(#ok(#Success(response))) {
+      #ok(response.summary.local_user_index_canister_id)
+    };
+    case(_) { #err("Failed to get local user index") };
+  };
+};
+```
+
+<Note>
+  The Local User Index canister ID is required for joining groups and communities. It's obtained by querying the group/community summary first.
+</Note>
+
+## Error Handling
+
+### Common Response Variants
+
+```motoko
+public type SendMessageResponse = {
+  #Success : { event_index : Nat32; message_index : Nat32 };
+  #ChannelNotFound;
+  #ThreadMessageNotFound;
+  #MessageEmpty;
+  #TextTooLong : Nat32;
+  #NotAuthorized;
+  #UserNotInCommunity;
+  #UserNotInChannel;
+  #UserSuspended;
+  #CommunityFrozen;
+  #RulesNotAccepted;
+};
+```
+
+### Example Error Handling
+
+```motoko
+switch(await* ocService.sendGroupMessage(...)) {
+  case(#ok(#Success(data))) {
+    logService.logInfo("Message sent successfully", null);
+  };
+  case(#ok(#NotAuthorized)) {
+    logService.logError("Bot not authorized in group", null);
+  };
+  case(#ok(#TextTooLong(maxLen))) {
+    logService.logError("Message too long. Max: " # Nat32.toText(maxLen), null);
+  };
+  case(#err(msg)) {
+    logService.logError("API call failed: " # msg, null);
+  };
+  case(_) {
+    logService.logError("Unknown error", null);
+  };
+};
+```
+
+## Avatar Management
+
+Bots can have custom avatars:
+
+```motoko
+public type Document = {
+  id : Nat;
+  data : Blob;
+  mime_type : Text;
+};
+```
+
+**Setting an Avatar:**
+```motoko
+let avatar = {
+  id = 1;
+  data = myImageBlob;
+  mime_type = "image/png";
+};
+
+let res = await* ocService.setAvatar(
+  "4bkt6-4aaaa-aaaaf-aaaiq-cai",
+  { avatar_id = ?avatar.id }
+);
+```
+
+<Card title="Avatar Size Limit" icon="triangle-exclamation">
+  Avatar images must be smaller than 800 KB. The SDK validates this before uploading.
+</Card>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Rate Limiting" icon="gauge">
+    Implement delays between bulk operations to avoid overwhelming OpenChat infrastructure
+  </Card>
+  <Card title="Error Retry Logic" icon="rotate">
+    Add retry logic for transient failures with exponential backoff
+  </Card>
+  <Card title="Message ID Uniqueness" icon="fingerprint">
+    Always use unique message IDs to prevent duplicate messages
+  </Card>
+  <Card title="Log All API Calls" icon="file-lines">
+    Use LogService to track all OpenChat API interactions for debugging
+  </Card>
+</CardGroup>

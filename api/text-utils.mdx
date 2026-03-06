@@ -1,0 +1,389 @@
+---
+title: 'TextUtils'
+description: 'Text formatting utilities for proposals, messages, and vote tallies'
+icon: 'text'
+---
+
+## Overview
+
+The TextUtils module provides formatting functions for creating human-readable text representations of proposals, vote tallies, and other bot messages. It integrates with the DateTime library for timestamp formatting.
+
+## Proposal Formatting
+
+### formatProposal
+
+Formats a single proposal into a human-readable text representation.
+
+```motoko
+public func formatProposal(proposal : ProposalAPI) : Text
+```
+
+<ParamField path="proposal" type="ProposalAPI" required>
+  The proposal object to format
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Formatted proposal text including ID, title, topic, creation date, and proposer
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let formattedProposal = TextUtils.formatProposal(proposal);
+// Output:
+// Proposal 12345
+// Title: Upgrade NNS Governance Canister
+// Topic: System Canister Management
+// Date Created: 2026-03-06 14:30
+// Proposer: 123456789
+```
+
+### formatProposals
+
+Formats multiple proposals into a combined text representation.
+
+```motoko
+public func formatProposals(proposals : [Proposal]) : Text
+```
+
+<ParamField path="proposals" type="[Proposal]" required>
+  Array of proposals to format (includes proposalData, messageIndex, and attempts)
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Formatted text of all proposals separated by double newlines
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let formattedList = TextUtils.formatProposals(proposalsArray);
+// Output:
+// Proposal 12345
+// Title: Upgrade NNS Governance Canister
+// ...
+//
+// Proposal 12346
+// Title: Update Subnet Configuration
+// ...
+```
+
+### formatProposalThreadMsg
+
+Formats a proposal message for an OpenChat thread with clickable links.
+
+```motoko
+public func formatProposalThreadMsg(
+    ocGroupId : Text,
+    proposalId : Nat64,
+    ocGroupMessageId : ?Nat32
+) : Text
+```
+
+<ParamField path="ocGroupId" type="Text" required>
+  The OpenChat group identifier
+</ParamField>
+
+<ParamField path="proposalId" type="Nat64" required>
+  The NNS proposal ID
+</ParamField>
+
+<ParamField path="ocGroupMessageId" type="?Nat32">
+  Optional OpenChat message ID for creating a direct link
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Formatted message with links to the ICP dashboard and OpenChat
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let threadMsg = TextUtils.formatProposalThreadMsg(
+    "abc123-group",
+    12345,
+    ?987654
+);
+// Output:
+// Proposal 12345:
+// [Dashboard Link](https://dashboard.internetcomputer.org/proposal/12345)
+// [OpenChat Link to vote](https://oc.app/group/abc123-group/987654)
+```
+
+### formatBatchProposalThreadMsg
+
+Formats multiple proposals for an OpenChat thread.
+
+```motoko
+public func formatBatchProposalThreadMsg(
+    ocGroupId : Text,
+    proposals : [Proposal]
+) : Text
+```
+
+<ParamField path="ocGroupId" type="Text" required>
+  The OpenChat group identifier
+</ParamField>
+
+<ParamField path="proposals" type="[Proposal]" required>
+  Array of proposals to format
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Combined formatted messages for all proposals
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let batchMsg = TextUtils.formatBatchProposalThreadMsg("abc123-group", proposalsArray);
+```
+
+## Proposal Analysis
+
+### isSeparateBuildProcess
+
+Determines if a proposal requires a separate build process by checking for specific canister IDs.
+
+```motoko
+public func isSeparateBuildProcess(title : Text) : Bool
+```
+
+<ParamField path="title" type="Text" required>
+  The proposal title to analyze
+</ParamField>
+
+<ResponseField name="return" type="Bool">
+  True if the title contains specific NNS canister IDs (qoctq-giaaa-aaaaa-aaaea-cai or rdmx6-jaaaa-aaaaa-aaadq-cai)
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let needsSeparateBuild = TextUtils.isSeparateBuildProcess(
+    "Upgrade qoctq-giaaa-aaaaa-aaaea-cai to version 2.0"
+);
+// Returns: true
+```
+
+### extractGitHash
+
+Extracts a Git hash from the proposal description.
+
+```motoko
+public func extractGitHash(title : Text, description : ?Text) : ?Text
+```
+
+<ParamField path="title" type="Text" required>
+  The proposal title (not currently used in extraction)
+</ParamField>
+
+<ParamField path="description" type="?Text">
+  The proposal description containing the Git hash
+</ParamField>
+
+<ResponseField name="return" type="?Text">
+  The extracted Git hash, or null if not found
+</ResponseField>
+
+**Supported Patterns**
+- `Git hash: <hash>`
+- `### Git Hash: <hash>`
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let description = "Upgrade proposal\n\nGit hash: abc123def456\n\nDetails...";
+let hash = TextUtils.extractGitHash("", ?description);
+// Returns: ?"abc123def456"
+
+let description2 = "Upgrade\n### Git Hash: `xyz789`\nMore info...";
+let hash2 = TextUtils.extractGitHash("", ?description2);
+// Returns: ?"xyz789"
+```
+
+## Vote and Status Formatting
+
+### voteToText
+
+Converts a vote value to human-readable text.
+
+```motoko
+public func voteToText(vote : Vote) : Text
+```
+
+<ParamField path="vote" type="Vote" required>
+  Vote enum (#Abstained, #Approved, #Rejected, or #Pending)
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Human-readable vote status
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let voteText = TextUtils.voteToText(#Approved);
+// Returns: "Accepted"
+
+let voteText2 = TextUtils.voteToText(#Pending);
+// Returns: "Pending"
+```
+
+### proposalStatusToText
+
+Converts a proposal status to human-readable text.
+
+```motoko
+public func proposalStatusToText(status : ProposalStatus) : Text
+```
+
+<ParamField path="status" type="ProposalStatus" required>
+  Proposal status enum (#Pending or #Executed with verdict)
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Human-readable status
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let statusText = TextUtils.proposalStatusToText(#Executed(#Approved));
+// Returns: "Approved"
+
+let statusText2 = TextUtils.proposalStatusToText(#Pending);
+// Returns: "Pending"
+```
+
+## Tally Formatting
+
+### formatMessage
+
+Formats vote tally data into a detailed message showing individual votes.
+
+```motoko
+public func formatMessage(tally : TallyData) : Text
+```
+
+<ParamField path="tally" type="TallyData" required>
+  Tally data containing votes and overall status
+</ParamField>
+
+<ResponseField name="return" type="Text">
+  Formatted message with tally status, counts, and individual neuron votes
+</ResponseField>
+
+**Example**
+
+```motoko
+import TextUtils "./backend/TextUtils";
+
+let tallyMsg = TextUtils.formatMessage(tallyData);
+// Output:
+// Tally Status: Accepted
+// Approves: 5 Rejects: 1 Total: 6
+// Neuron ID: 123456789 | Alias: My Neuron | Vote: Accepted
+// Neuron ID: 987654321 | Alias: () | Vote: Rejected
+// ...
+```
+
+## Complete Example
+
+```motoko
+import TextUtils "./backend/TextUtils";
+import Types "./backend/Types";
+import TrackerTypes "./backend/TrackerTypes";
+
+actor ProposalFormatter {
+    // Format a proposal for display
+    public func displayProposal(proposal : TrackerTypes.ProposalAPI) : async Text {
+        let formatted = TextUtils.formatProposal(proposal);
+        formatted
+    };
+
+    // Create an OpenChat message with links
+    public func createProposalMessage(
+        groupId : Text,
+        proposalId : Nat64,
+        messageId : ?Nat32
+    ) : async Text {
+        TextUtils.formatProposalThreadMsg(groupId, proposalId, messageId)
+    };
+
+    // Analyze proposal for build requirements
+    public func analyzeProposal(
+        title : Text,
+        description : ?Text
+    ) : async (Bool, ?Text) {
+        let needsSeparateBuild = TextUtils.isSeparateBuildProcess(title);
+        let gitHash = TextUtils.extractGitHash(title, description);
+        (needsSeparateBuild, gitHash)
+    };
+
+    // Format tally results
+    public func displayTally(tally : Types.TallyData) : async Text {
+        TextUtils.formatMessage(tally)
+    };
+
+    // Convert vote to readable format
+    public func getVoteStatus(vote : Types.Vote) : async Text {
+        TextUtils.voteToText(vote)
+    };
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Date formatting">
+    The module uses `mo:datetime` for timestamp formatting with the format `YYYY-MM-DD HH:mm`. Timestamps are converted from seconds to nanoseconds:
+    ```motoko
+    let date = DateTime.DateTime(
+        Int64.toInt(Int64.fromNat64(proposal.proposalTimestampSeconds * 1_000_000_000))
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="Link generation">
+    Always provide the OpenChat group ID and message ID for creating functional links:
+    ```motoko
+    // Good - includes message ID for direct link
+    formatProposalThreadMsg(groupId, proposalId, ?messageId)
+    
+    // Acceptable - no message ID, only dashboard link shown
+    formatProposalThreadMsg(groupId, proposalId, null)
+    ```
+  </Accordion>
+
+  <Accordion title="Git hash extraction">
+    The function supports multiple patterns and handles backticks and whitespace:
+    - Looks for `Git hash: ` or `### Git Hash: `
+    - Trims spaces and backticks from the extracted hash
+    - Returns null if no pattern is found
+  </Accordion>
+
+  <Accordion title="Tally messages">
+    The formatMessage function provides detailed vote breakdown. For neuron aliases, it shows `()` when no display name is available:
+    ```motoko
+    let msg = TextUtils.formatMessage(tallyData);
+    // Includes approve/reject counts and individual neuron votes
+    ```
+  </Accordion>
+</AccordionGroup>

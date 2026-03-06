@@ -1,0 +1,952 @@
+---
+title: 'OCApi'
+description: 'Auto-generated OpenChat API bindings and type definitions'
+---
+
+## Overview
+
+The `OCApi` module contains auto-generated Motoko type bindings for the OpenChat platform. This file provides type-safe interfaces to OpenChat's canister APIs, including comprehensive message types, user types, community/group structures, and response formats.
+
+<Warning>
+This file is auto-generated from OpenChat specifications. Do not modify it directly.
+</Warning>
+
+## Core Types
+
+### Identity Types
+
+#### UserId
+
+```motoko
+public type UserId = CanisterId;
+public type CanisterId = Principal;
+```
+
+Represents a unique user identifier (Principal).
+
+#### ChannelId
+
+```motoko
+public type ChannelId = Nat;
+```
+
+Numerical identifier for channels within communities.
+
+#### CommunityId
+
+```motoko
+public type CommunityId = CanisterId;
+```
+
+Principal identifier for communities.
+
+#### ChatId
+
+```motoko
+public type ChatId = CanisterId;
+```
+
+Principal identifier for group chats.
+
+### Message Types
+
+#### MessageId
+
+```motoko
+public type MessageId = Nat;
+```
+
+Unique identifier for messages (client-generated).
+
+#### MessageIndex
+
+```motoko
+public type MessageIndex = Nat32;
+```
+
+Server-assigned sequential index for messages within a chat.
+
+#### EventIndex
+
+```motoko
+public type EventIndex = Nat32;
+```
+
+Sequential index for all events (messages, reactions, edits, etc.) in a chat.
+
+### MessageContent
+
+The content of a message. Supports multiple content types:
+
+```motoko
+public type MessageContent = {
+  #Text : TextContent;
+  #Image : ImageContent;
+  #Video : VideoContent;
+  #Audio : AudioContent;
+  #File : FileContent;
+  #Poll : PollContent;
+  #Crypto : CryptoContent;
+  #Giphy : GiphyContent;
+  #Prize : PrizeContent;
+  #P2PSwap : P2PSwapContent;
+  #GovernanceProposal : ProposalContent;
+  #Custom : CustomMessageContent;
+  #Deleted : DeletedContent;
+  #ReportedMessage : ReportedMessage;
+  #PrizeWinner : PrizeWinnerContent;
+  #MessageReminderCreated : MessageReminderCreated;
+  #MessageReminder : MessageReminder;
+};
+```
+
+<Expandable title="Content Type Details">
+  **#Text** - Plain or markdown text message
+  
+  ```motoko
+  public type TextContent = { text : Text };
+  ```
+  
+  **#Image** - Image with optional caption
+  
+  ```motoko
+  public type ImageContent = {
+    height : Nat32;
+    mime_type : Text;
+    blob_reference : ?BlobReference;
+    thumbnail_data : Text;
+    caption : ?Text;
+    width : Nat32;
+  };
+  ```
+  
+  **#File** - File attachment
+  
+  ```motoko
+  public type FileContent = {
+    name : Text;
+    mime_type : Text;
+    file_size : Nat32;
+    blob_reference : ?BlobReference;
+    caption : ?Text;
+  };
+  ```
+  
+  **#Audio** - Audio file
+  
+  ```motoko
+  public type AudioContent = {
+    mime_type : Text;
+    blob_reference : ?BlobReference;
+    caption : ?Text;
+  };
+  ```
+  
+  **#Video** - Video file
+  
+  ```motoko
+  public type VideoContent = {
+    height : Nat32;
+    image_blob_reference : ?BlobReference;
+    video_blob_reference : ?BlobReference;
+    mime_type : Text;
+    thumbnail_data : Text;
+    caption : ?Text;
+    width : Nat32;
+  };
+  ```
+  
+  **#Poll** - Interactive poll
+  
+  ```motoko
+  public type PollContent = {
+    votes : PollVotes;
+    ended : Bool;
+    config : PollConfig;
+  };
+  ```
+  
+  **#Crypto** - Cryptocurrency transfer
+  
+  ```motoko
+  public type CryptoContent = {
+    recipient : UserId;
+    caption : ?Text;
+    transfer : CryptoTransaction;
+  };
+  ```
+</Expandable>
+
+### MessageContentInitial
+
+Initial message content when creating a new message (subset of MessageContent):
+
+```motoko
+public type MessageContentInitial = {
+  #Text : TextContent;
+  #Image : ImageContent;
+  #Video : VideoContent;
+  #Audio : AudioContent;
+  #File : FileContent;
+  #Poll : PollContent;
+  #Crypto : CryptoContent;
+  #Giphy : GiphyContent;
+  #Prize : PrizeContentInitial;
+  #P2PSwap : P2PSwapContentInitial;
+  #GovernanceProposal : ProposalContent;
+  #Custom : CustomMessageContent;
+  #Deleted : DeletedContent;
+  #MessageReminderCreated : MessageReminderCreated;
+  #MessageReminder : MessageReminder;
+};
+```
+
+### Message
+
+Complete message structure:
+
+```motoko
+public type Message = {
+  forwarded : Bool;
+  content : MessageContent;
+  edited : Bool;
+  tips : [(CanisterId, [(UserId, Nat)])];
+  last_updated : ?TimestampMillis;
+  sender : UserId;
+  thread_summary : ?ThreadSummary;
+  message_id : MessageId;
+  replies_to : ?ReplyContext;
+  reactions : [(Text, [UserId])];
+  message_index : MessageIndex;
+};
+```
+
+<ParamField path="message_id" type="MessageId">
+  Client-generated unique message identifier
+</ParamField>
+
+<ParamField path="message_index" type="MessageIndex">
+  Server-assigned sequential index
+</ParamField>
+
+<ParamField path="sender" type="UserId">
+  Principal of the message sender
+</ParamField>
+
+<ParamField path="content" type="MessageContent">
+  The message content (text, image, etc.)
+</ParamField>
+
+<ParamField path="edited" type="Bool">
+  Whether message has been edited
+</ParamField>
+
+<ParamField path="reactions" type="[(Text, [UserId])]">
+  Emoji reactions and users who reacted
+</ParamField>
+
+<ParamField path="replies_to" type="?ReplyContext">
+  Optional reference to message being replied to
+</ParamField>
+
+<ParamField path="thread_summary" type="?ThreadSummary">
+  Thread information if message has replies
+</ParamField>
+
+### MessageEventWrapper
+
+Wraps a message with metadata:
+
+```motoko
+public type MessageEventWrapper = {
+  event : Message;
+  timestamp : TimestampMillis;
+  index : EventIndex;
+  correlation_id : Nat64;
+  expires_at : ?TimestampMillis;
+};
+```
+
+## File & Media Types
+
+### BlobReference
+
+Reference to stored blob data:
+
+```motoko
+public type BlobReference = {
+  blob_id : Nat;
+  canister_id : CanisterId;
+};
+```
+
+<ParamField path="blob_id" type="Nat">
+  Identifier for the blob
+</ParamField>
+
+<ParamField path="canister_id" type="CanisterId">
+  Canister storing the blob data
+</ParamField>
+
+### Document
+
+Document/file data:
+
+```motoko
+public type Document = {
+  id : Nat;
+  data : Blob;
+  mime_type : Text;
+};
+```
+
+## Response Types
+
+### Bot Registration
+
+#### InitializeBotResponse
+
+```motoko
+public type InitializeBotResponse = {
+  #Success;
+  #EndDateInPast;
+  #AlreadyRegistered;
+  #UserLimitReached;
+  #UsernameTaken;
+  #UsernameInvalid;
+  #UsernameTooShort : Nat16;
+  #UsernameTooLong : Nat16;
+  #InsufficientCyclesProvided : Nat;
+  #InternalError : Text;
+};
+```
+
+<ResponseField name="InitializeBotResponse" type="variant">
+  Response from bot registration attempt
+  
+  <Expandable title="Response variants">
+    - `#Success` - Bot successfully registered
+    - `#AlreadyRegistered` - Bot username already exists
+    - `#UsernameTaken` - Username taken by another user
+    - `#UsernameInvalid` - Invalid username format
+    - `#UsernameTooShort(Nat16)` - Username too short (minimum length provided)
+    - `#UsernameTooLong(Nat16)` - Username too long (maximum length provided)
+    - `#InsufficientCyclesProvided(Nat)` - Not enough cycles (required amount provided)
+    - `#InternalError(Text)` - Internal error with message
+  </Expandable>
+</ResponseField>
+
+### User Information
+
+#### UserSummaryResponse
+
+```motoko
+public type UserSummaryResponse = {
+  #Success : UserSummary;
+  #UserNotFound;
+};
+```
+
+#### UserSummary
+
+```motoko
+public type UserSummary = {
+  username : Text;
+  diamond_member : Bool;
+  diamond_membership_status : DiamondMembershipStatus;
+  user_id : UserId;
+  is_bot : Bool;
+  display_name : ?Text;
+  avatar_id : ?Nat;
+  suspended : Bool;
+};
+```
+
+<ResponseField name="UserSummary">
+  <Expandable title="Fields">
+    <ParamField path="username" type="Text">
+      Unique username
+    </ParamField>
+    <ParamField path="user_id" type="UserId">
+      User's principal identifier
+    </ParamField>
+    <ParamField path="is_bot" type="Bool">
+      Whether this user is a bot
+    </ParamField>
+    <ParamField path="display_name" type="?Text">
+      Optional display name
+    </ParamField>
+    <ParamField path="avatar_id" type="?Nat">
+      Optional avatar image ID
+    </ParamField>
+    <ParamField path="suspended" type="Bool">
+      Whether user is suspended
+    </ParamField>
+    <ParamField path="diamond_member" type="Bool">
+      Whether user has diamond membership
+    </ParamField>
+  </Expandable>
+</ResponseField>
+
+### Avatar
+
+#### SetAvatarArgs
+
+```motoko
+public type SetAvatarArgs = {
+  avatar_id : ?Nat;
+};
+```
+
+#### SetAvatarResponse
+
+```motoko
+public type SetAvatarResponse = {
+  #Success;
+  #UserNotFound;
+};
+```
+
+### Group Operations
+
+#### JoinGroupArgs
+
+```motoko
+public type JoinGroupArgs = {
+  chat_id : Principal;
+  invite_code : ?Nat64;
+  correlation_id : Nat64;
+};
+```
+
+#### JoinGroupResponse
+
+```motoko
+public type JoinGroupResponse = {
+  #Success : {};
+  #AlreadyInGroupV2 : {};
+  #AlreadyInGroup;
+  #GateCheckFailed : {};
+  #GroupNotFound;
+  #GroupNotPublic;
+  #NotInvited;
+  #ParticipantLimitReached : Nat32;
+  #Blocked;
+  #UserSuspended;
+  #ChatFrozen;
+  #InternalError : Text;
+};
+```
+
+### Community Operations
+
+#### JoinCommunityArgs
+
+```motoko
+public type JoinCommunityArgs = {
+  community_id : CommunityId;
+  user_id : UserId;
+  principal : Principal;
+  invite_code : ?Nat64;
+  is_platform_moderator : Bool;
+  is_bot : Bool;
+  diamond_membership_expires_at : ?Int;
+  verified_credential_args : ?VerifiedCredentialGateArgs;
+};
+```
+
+<ParamField path="community_id" type="CommunityId" required>
+  The community to join
+</ParamField>
+
+<ParamField path="user_id" type="UserId" required>
+  The user's ID
+</ParamField>
+
+<ParamField path="is_bot" type="Bool" required>
+  Set to true for bots
+</ParamField>
+
+<ParamField path="invite_code" type="?Nat64">
+  Optional invite code for private communities
+</ParamField>
+
+#### JoinCommunityResponse
+
+```motoko
+public type JoinCommunityResponse = {
+  #Success : CommunityCanisterCommunitySummary;
+  #AlreadyInCommunity : CommunityCanisterCommunitySummary;
+  #GateCheckFailed : GateCheckFailedReason;
+  #NotInvited;
+  #UserBlocked;
+  #MemberLimitReached : Nat32;
+  #CommunityFrozen;
+  #InternalError : Text;
+};
+```
+
+#### JoinChannelArgs
+
+```motoko
+public type JoinChannelArgs = {
+  community_id : CommunityId;
+  channel_id : ChannelId;
+  user_id : UserId;
+  principal : Principal;
+  invite_code : ?Nat64;
+  is_platform_moderator : Bool;
+  is_bot : Bool;
+  diamond_membership_expires_at : ?Int;
+  verified_credential_args : ?VerifiedCredentialGateArgs;
+};
+```
+
+#### JoinChannelResponse
+
+```motoko
+public type JoinChannelResponse = {
+  #Success : CommunityCanisterChannelSummary;
+  #SuccessJoinedCommunity : CommunityCanisterCommunitySummary;
+  #AlreadyInChannel : CommunityCanisterCommunitySummary;
+  #GateCheckFailed : GateCheckFailedReason;
+  #UserNotInCommunity;
+  #ChannelNotFound;
+  #NotInvited;
+  #UserSuspended;
+  #UserBlocked;
+  #MemberLimitReached : Nat32;
+  #CommunityFrozen;
+  #InternalError : Text;
+};
+```
+
+### Messaging Operations
+
+#### SendMessageResponse
+
+```motoko
+public type SendMessageResponse = {
+  #Success : {
+    event_index : Nat32;
+    message_index : Nat32;
+  };
+  #ChannelNotFound;
+  #ThreadMessageNotFound;
+  #MessageEmpty;
+  #TextTooLong : Nat32;
+  #InvalidPoll : InvalidPollReason;
+  #NotAuthorized;
+  #UserNotInCommunity;
+  #UserNotInChannel;
+  #UserSuspended;
+  #InvalidRequest : Text;
+  #CommunityFrozen;
+  #RulesNotAccepted;
+  #CommunityRulesNotAccepted;
+};
+```
+
+<ResponseField name="Success">
+  <Expandable title="Success fields">
+    <ParamField path="event_index" type="Nat32">
+      Event index assigned to this message
+    </ParamField>
+    <ParamField path="message_index" type="Nat32">
+      Message index assigned to this message
+    </ParamField>
+  </Expandable>
+</ResponseField>
+
+#### EditMessageResponse
+
+```motoko
+public type EditMessageResponse = {
+  #Success;
+  #MessageNotFound;
+  #CallerNotInGroup;
+  #UserSuspended;
+  #UserLapsed;
+  #ChatFrozen;
+};
+```
+
+#### EditChannelMessageResponse
+
+```motoko
+public type EditChannelMessageResponse = {
+  #Success;
+  #MessageNotFound;
+  #UserNotInCommunity;
+  #UserNotInChannel;
+  #UserSuspended;
+  #UserLapsed;
+  #CommunityFrozen;
+  #ChannelNotFound;
+};
+```
+
+### Message Retrieval
+
+#### MessagesByMessageIndexArgs
+
+```motoko
+public type MessagesByMessageIndexArgs = {
+  thread_root_message_index : ?MessageIndex;
+  messages : [MessageIndex];
+  latest_known_update : ?Nat64;
+};
+```
+
+<ParamField path="messages" type="[MessageIndex]" required>
+  Array of message indices to retrieve
+</ParamField>
+
+<ParamField path="thread_root_message_index" type="?MessageIndex">
+  If retrieving thread messages, specify thread root
+</ParamField>
+
+<ParamField path="latest_known_update" type="?Nat64">
+  Optimization: skip if no updates since this timestamp
+</ParamField>
+
+#### MessagesByMessageIndexResponse
+
+```motoko
+public type MessagesByMessageIndexResponse = {
+  #Success : MessagesResponse;
+  #CallerNotInGroup;
+  #ThreadMessageNotFound;
+  #ReplicaNotUpToDateV2 : TimestampMillis;
+};
+```
+
+#### MessagesResponse
+
+```motoko
+public type MessagesResponse = {
+  messages : [MessageEventWrapper];
+  latest_event_index : EventIndex;
+  chat_last_updated : TimestampMillis;
+};
+```
+
+## Community & Group Structures
+
+### CommunityCanisterCommunitySummary
+
+Complete community information:
+
+```motoko
+public type CommunityCanisterCommunitySummary = {
+  is_public : Bool;
+  permissions : CommunityPermissions;
+  community_id : CommunityId;
+  metrics : ChatMetrics;
+  gate : ?AccessGate;
+  name : Text;
+  description : Text;
+  last_updated : TimestampMillis;
+  channels : [CommunityCanisterChannelSummary];
+  user_groups : [UserGroup];
+  avatar_id : ?Nat;
+  membership : ?CommunityMembership;
+  local_user_index_canister_id : CanisterId;
+  frozen : ?FrozenGroupInfo;
+  latest_event_index : EventIndex;
+  banner_id : ?Nat;
+  member_count : Nat32;
+  primary_language : Text;
+};
+```
+
+### CommunityCanisterChannelSummary
+
+Channel information:
+
+```motoko
+public type CommunityCanisterChannelSummary = {
+  channel_id : ChannelId;
+  is_public : Bool;
+  name : Text;
+  description : Text;
+  subtype : ?GroupSubtype;
+  avatar_id : ?Nat;
+  permissions_v2 : GroupPermissions;
+  gate : ?AccessGate;
+  member_count : Nat32;
+  latest_message : ?MessageEventWrapper;
+  latest_message_index : ?MessageIndex;
+  latest_event_index : EventIndex;
+  min_visible_event_index : EventIndex;
+  min_visible_message_index : MessageIndex;
+  metrics : ChatMetrics;
+  membership : ?GroupMembership;
+  history_visible_to_new_joiners : Bool;
+  events_ttl : ?Milliseconds;
+  events_ttl_last_updated : TimestampMillis;
+  date_last_pinned : ?TimestampMillis;
+  last_updated : TimestampMillis;
+};
+```
+
+### PublicGroupSummary
+
+Public group information:
+
+```motoko
+public type PublicGroupSummary = {
+  is_public : Bool;
+  subtype : ?GroupSubtype;
+  gate : ?AccessGate;
+  name : Text;
+  wasm_version : BuildVersion;
+  latest_message_index : ?MessageIndex;
+  description : Text;
+  events_ttl : ?Milliseconds;
+  last_updated : TimestampMillis;
+  avatar_id : ?Nat;
+  local_user_index_canister_id : CanisterId;
+  frozen : ?FrozenGroupInfo;
+  latest_event_index : EventIndex;
+  history_visible_to_new_joiners : Bool;
+  chat_id : ChatId;
+  events_ttl_last_updated : TimestampMillis;
+  participant_count : Nat32;
+  latest_message : ?MessageEventWrapper;
+};
+```
+
+## Access Control Types
+
+### AccessGate
+
+Access requirements for groups/channels:
+
+```motoko
+public type AccessGate = {
+  #DiamondMember;
+  #SnsNeuron : SnsNeuronGate;
+  #TokenBalance : TokenBalanceGate;
+  #Payment : PaymentGate;
+  #VerifiedCredential : VerifiedCredentialGate;
+};
+```
+
+<Expandable title="Gate types">
+  **DiamondMember** - Requires diamond membership
+  
+  **SnsNeuron** - Requires SNS neuron with minimum stake/dissolve delay
+  
+  ```motoko
+  public type SnsNeuronGate = {
+    min_stake_e8s : ?Nat64;
+    min_dissolve_delay : ?Milliseconds;
+    governance_canister_id : CanisterId;
+  };
+  ```
+  
+  **TokenBalance** - Requires minimum token balance
+  
+  ```motoko
+  public type TokenBalanceGate = {
+    min_balance : Nat;
+    ledger_canister_id : CanisterId;
+  };
+  ```
+  
+  **Payment** - Requires payment to join
+  
+  ```motoko
+  public type PaymentGate = {
+    fee : Nat;
+    ledger_canister_id : CanisterId;
+    amount : Nat;
+  };
+  ```
+</Expandable>
+
+## Permission Types
+
+### GroupPermissions
+
+```motoko
+public type GroupPermissions = {
+  mention_all_members : PermissionRole;
+  delete_messages : PermissionRole;
+  remove_members : PermissionRole;
+  update_group : PermissionRole;
+  message_permissions : MessagePermissions;
+  invite_users : PermissionRole;
+  thread_permissions : ?MessagePermissions;
+  change_roles : PermissionRole;
+  add_members : PermissionRole;
+  pin_messages : PermissionRole;
+  react_to_messages : PermissionRole;
+};
+```
+
+### PermissionRole
+
+```motoko
+public type PermissionRole = {
+  #None;
+  #Owner;
+  #Admins;
+  #Moderators;
+  #Members;
+};
+```
+
+### GroupRole
+
+```motoko
+public type GroupRole = {
+  #Owner;
+  #Admin;
+  #Moderator;
+  #Participant;
+};
+```
+
+## Time Types
+
+```motoko
+public type TimestampMillis = Nat64;  // Unix timestamp in milliseconds
+public type TimestampNanos = Nat64;   // Unix timestamp in nanoseconds
+public type Milliseconds = Nat64;     // Duration in milliseconds
+```
+
+## Canister Actor Types
+
+The module defines actor interfaces for calling OpenChat canisters:
+
+### UserIndexCanister
+
+```motoko
+public type UserIndexCanister = actor {
+  c2c_register_bot : ({
+    username : Text;
+    display_name : ?Text;
+  }) -> async InitializeBotResponse;
+  
+  user : query ({
+    user_id : ?UserId;
+    username : ?Text;
+  }) -> async UserSummaryResponse;
+  
+  c2c_set_avatar : ({
+    avatar_id : ?Nat;
+  }) -> async SetAvatarResponse;
+};
+```
+
+### GroupIndexCanister
+
+```motoko
+public type GroupIndexCanister = actor {
+  public_summary : query ({
+    invite_code : ?Nat64;
+  }) -> async {
+    #Success : PublicSummarySuccessResult;
+    #NotAuthorized;
+  };
+  
+  messages_by_message_index : query (
+    MessagesByMessageIndexArgs
+  ) -> async MessagesByMessageIndexResponse;
+  
+  send_message_v2 : (
+    SendMessageV2Args
+  ) -> async SendMessageResponse;
+  
+  edit_message_v2 : (
+    EditMessageV2Args
+  ) -> async EditMessageResponse;
+};
+```
+
+### CommunityIndexCanister
+
+```motoko
+public type CommunityIndexCanister = actor {
+  send_message : (
+    SendChannelMessageArgs
+  ) -> async SendMessageResponse;
+  
+  edit_message : (
+    EditChannelMessageArgs
+  ) -> async EditChannelMessageResponse;
+  
+  join_community : (
+    JoinCommunityArgs
+  ) -> async JoinCommunityResponse;
+  
+  join_channel : (
+    JoinChannelArgs
+  ) -> async JoinChannelResponse;
+  
+  summary : query ({
+    invite_code : ?Nat64;
+  }) -> async CommunitySummaryResponse;
+};
+```
+
+### LocalUserIndexCanister
+
+```motoko
+public type LocalUserIndexCanister = actor {
+  join_group : (
+    JoinGroupArgs
+  ) -> async JoinGroupResponse;
+};
+```
+
+## Usage Guidelines
+
+### Creating Text Messages
+
+```motoko
+let content : MessageContentInitial = #Text({
+  text = "Hello from my bot!";
+});
+```
+
+### Creating Image Messages
+
+```motoko
+let content : MessageContentInitial = #Image({
+  height = 800;
+  width = 600;
+  mime_type = "image/png";
+  blob_reference = ?{ blob_id = 123; canister_id = imagePrincipal };
+  thumbnail_data = "base64_thumbnail_data";
+  caption = ?"Check out this image!";
+});
+```
+
+### Handling Message Responses
+
+```motoko
+switch (sendResult) {
+  case (#Success({ event_index; message_index })) {
+    Debug.print("Message sent: " # Nat32.toText(message_index));
+  };
+  case (#UserNotInChannel) {
+    Debug.print("Bot not in channel");
+  };
+  case (#TextTooLong(maxLength)) {
+    Debug.print("Text exceeds " # Nat32.toText(maxLength));
+  };
+  // ... handle other cases
+};
+```
+
+## Related Documentation
+
+- [OCService](/api/oc-service) - High-level service implementation
+- [OCTypes](/api/oc-types) - Type abstractions and patterns
+
+## OpenChat API Version
+
+This binding is generated from OpenChat's canister interface specifications. For the latest OpenChat API documentation, visit [OpenChat documentation](https://oc.app/docs).

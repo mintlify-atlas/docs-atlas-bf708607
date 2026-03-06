@@ -1,0 +1,452 @@
+---
+title: 'TallyBot'
+description: 'Track governance proposals and send voting tally updates to OpenChat groups and channels'
+---
+
+## Overview
+
+TallyBot is an automated bot that tracks governance proposals across multiple neurons and sends real-time voting tally updates to OpenChat groups and channels. It monitors how specific neurons vote on proposals and broadcasts the status to subscribed communities.
+
+### Key Features
+
+- **Subscription-based notifications**: Subscribe channels/groups to specific tally IDs
+- **Real-time vote tracking**: Monitor neuron votes on governance proposals
+- **Smart message management**: Edits existing messages until consensus is reached
+- **Thread support**: Posts updates as replies to original proposal messages
+- **NNS integration**: Special handling for NNS Proposal Group messages
+
+## How It Works
+
+TallyBot receives tally updates from external services through the `tallyUpdate` endpoint and broadcasts them to subscribed OpenChat destinations. It maintains a mapping between proposal IDs and message indexes to efficiently update existing messages rather than creating new ones.
+
+<Note>
+  TallyBot requires authorization through the `allowedNotifiers` list to accept tally updates. Only custodians can add notifiers.
+</Note>
+
+## Architecture
+
+### TallyFeed Type
+
+The bot receives updates in the `TallyFeed` format:
+
+```motoko
+type TallyFeed = {
+  tallyId : Text;              // Unique identifier for the tally
+  alias : ?Text;               // Optional human-readable name
+  ballots : [Ballot];          // Array of proposal ballots
+  governanceCanister : Text;   // Governance canister ID
+};
+```
+
+### Ballot Format
+
+Each ballot contains voting information:
+
+```motoko
+type Ballot = {
+  proposalId : Nat64;          // Proposal ID being tracked
+  tallyVote : Vote;            // Overall tally status
+  neuronVotes : [VoteRecord];  // Individual neuron votes
+};
+
+type VoteRecord = {
+  neuronId : Text;             // Neuron identifier
+  displayName : ?Text;         // Optional display name
+  vote : Vote;                 // Vote status
+};
+
+type Vote = {
+  #Yes;        // 🟢
+  #No;         // 🔴
+  #Abstained;  // 🟡
+  #Pending;    // ⚪️
+};
+```
+
+### Subscriber Types
+
+TallyBot supports two subscription types:
+
+```motoko
+type Sub = {
+  #Channel : { 
+    communityCanisterId : Text; 
+    channelId : Nat 
+  };
+  #Group : Text;  // Group canister ID
+};
+```
+
+## Getting Started
+
+<Steps>
+  <Step title="Initialize the bot">
+    Register your canister as an OpenChat bot (requires 10 XDR in cycles):
+    
+    ```bash
+    # With display name
+    dfx canister call OCBot initBot '("tally_bot", opt "Tally Bot")' --network ic
+    
+    # With name only
+    dfx canister call OCBot initBot '("tally_bot", null)' --network ic
+    ```
+  </Step>
+  
+  <Step title="Join groups or communities">
+    Add the bot to your target destinations:
+    
+    <CodeGroup>
+    ```bash Group
+    # Join a public group
+    dfx canister call OCBot tryJoinGroup '("group_canister_id", null)' --network ic
+    
+    # Join with invite code
+    dfx canister call OCBot tryJoinGroup '("group_canister_id", opt 123456789)' --network ic
+    ```
+    
+    ```bash Community
+    # Join a public community
+    dfx canister call OCBot tryJoinCommunity '("community_canister_id", null)' --network ic
+    
+    # Join with invite code
+    dfx canister call OCBot tryJoinCommunity '("community_canister_id", opt 123456789)' --network ic
+    ```
+    
+    ```bash Channel
+    # Join a channel within a community
+    dfx canister call OCBot tryJoinChannel '("community_canister_id", 42, null)' --network ic
+    
+    # Join with invite code
+    dfx canister call OCBot tryJoinChannel '("community_canister_id", 42, opt 123456789)' --network ic
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Subscribe to tally IDs">
+    Subscribe channels or groups to receive updates for specific tally IDs:
+    
+    <CodeGroup>
+    ```bash Channel Subscription
+    dfx canister call OCBot addSubscriber '(
+      "tally_123", 
+      variant { 
+        Channel = record { 
+          communityCanisterId = "community_canister_id"; 
+          channelId = 42 
+        } 
+      }
+    )' --network ic
+    ```
+    
+    ```bash Group Subscription
+    dfx canister call OCBot addSubscriber '(
+      "tally_123", 
+      variant { 
+        Group = "group_canister_id" 
+      }
+    )' --network ic
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Configure notifiers">
+    Add authorized principals that can send tally updates:
+    
+    ```bash
+    dfx canister call OCBot addNotifier '(principal "xyz-...-cai")' --network ic
+    ```
+  </Step>
+</Steps>
+
+## API Reference
+
+### tallyUpdate
+
+Receives tally updates from authorized notifiers and broadcasts to subscribers.
+
+<ParamField body="feed" type="[TallyFeed]" required>
+  Array of tally feeds containing ballot information
+</ParamField>
+
+**Authorization**: Requires caller to be in `allowedNotifiers` list
+
+**Returns**: `Result<(), Text>`
+
+```motoko
+public shared ({ caller }) func tallyUpdate(feed : [TallyFeed]) : async Result<(), Text>
+```
+
+### addSubscriber
+
+Subscribes a channel or group to receive updates for a specific tally ID.
+
+<ParamField body="tallyId" type="Text" required>
+  The tally ID to subscribe to
+</ParamField>
+
+<ParamField body="subscriber" type="Sub" required>
+  Channel or Group subscription details
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+```motoko
+public shared ({ caller }) func addSubscriber(
+  tallyId : TallyId, 
+  subscriber : Sub
+) : async Result<(), Text>
+```
+
+### deleteSubscription
+
+Removes a subscription for a tally ID.
+
+<ParamField body="tallyId" type="Text" required>
+  The tally ID to unsubscribe from
+</ParamField>
+
+<ParamField body="subscriber" type="Sub" required>
+  Channel or Group to unsubscribe
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+<CodeGroup>
+```bash Channel
+dfx canister call OCBot deleteSubscription '(
+  "tally_123", 
+  variant { 
+    Channel = record { 
+      communityCanisterId = "community_id"; 
+      channelId = 42 
+    } 
+  }
+)' --network ic
+```
+
+```bash Group
+dfx canister call OCBot deleteSubscription '(
+  "tally_123", 
+  variant { 
+    Group = "group_canister_id" 
+  }
+)' --network ic
+```
+</CodeGroup>
+
+### getSubscribers
+
+Retrieves all subscriptions for a specific tally ID or all subscriptions.
+
+<ParamField query="tallyId" type="?Text">
+  Optional tally ID to filter. If null, returns all subscriptions.
+</ParamField>
+
+**Returns**: `[(TallyId, [Sub])]`
+
+```bash
+# Get all subscriptions
+dfx canister call OCBot getSubscribers '(null)' --network ic
+
+# Get subscriptions for specific tally
+dfx canister call OCBot getSubscribers '(opt "tally_123")' --network ic
+```
+
+### toggleNNSGroup
+
+Enables or disables posting updates to the NNS Proposal Group.
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<Bool, Text>` - New state (true if enabled)
+
+```bash
+dfx canister call OCBot toggleNNSGroup '()' --network ic
+```
+
+## Message Formatting
+
+TallyBot formats ballot updates with visual indicators:
+
+```
+Tally Name: My Neuron Group
+Proposal: 12345
+Tally Status: 🟢
+- neuron_123 🟢
+- neuron_456 🔴
+- neuron_789 ⚪️
+```
+
+<Card title="Vote Status Icons" icon="circle">
+  - 🟢 **Yes** - Voted in favor
+  - 🔴 **No** - Voted against
+  - 🟡 **Abstained** - Abstained from voting
+  - ⚪️ **Pending** - Vote not yet cast
+</Card>
+
+## Smart Update Logic
+
+TallyBot optimizes message management:
+
+1. **First Update**: Creates a new message with the ballot status
+2. **Subsequent Updates**: Edits the existing message instead of creating duplicates
+3. **Consensus Reached**: Deletes the message ID mapping when all votes are cast
+4. **Thread Support**: Posts updates as replies to original proposal messages in NNS Group
+
+### NNS Proposal Group Integration
+
+For the NNS Proposal Group (`labxu-baaaa-aaaaf-anb4q-cai`), TallyBot:
+
+- Matches proposals with existing message indexes
+- Posts tally updates as threaded replies to original proposal messages
+- Maintains a lookup table mapping proposal IDs to message indexes
+- Tracks dependencies to efficiently manage message lifecycle
+
+```motoko
+// Matches proposals with their message indexes in NNS Group
+public func matchProposalsWithMessages(
+  groupId : Text, 
+  proposals : Map<Nat64, ()>, 
+  maxEmptyRounds : ?Nat
+) : async* Result<List<(Nat64, MessageIndex)>, Text>
+```
+
+## Testing
+
+### Test Message Sending
+
+Verify the bot can send messages:
+
+<CodeGroup>
+```bash Group Message
+dfx canister call OCBot testSendMessageToGroup '(
+  "group_canister_id", 
+  "Test message", 
+  null
+)' --network ic
+```
+
+```bash Threaded Message
+dfx canister call OCBot testSendMessageToGroup '(
+  "group_canister_id", 
+  "Test reply", 
+  opt 42
+)' --network ic
+```
+
+```bash Channel Message
+dfx canister call OCBot testSendMessageToChannel '(
+  "community_canister_id",
+  42,
+  variant { Text = record { text = "Test message" } },
+  null
+)' --network ic
+```
+</CodeGroup>
+
+### Test Ballot Formatting
+
+Preview how ballots will be formatted:
+
+```bash
+dfx canister call OCBot testFormatBallot '(
+  "group_canister_id",
+  null,
+  record {
+    proposalId = 12345;
+    tallyVote = variant { Pending };
+    neuronVotes = vec {
+      record {
+        neuronId = "neuron_123";
+        displayName = opt "My Neuron";
+        vote = variant { Yes }
+      };
+      record {
+        neuronId = "neuron_456";
+        displayName = opt "Other Neuron";
+        vote = variant { Pending }
+      }
+    }
+  }
+)' --network ic
+```
+
+## Best Practices
+
+<Card title="Subscription Management" icon="users">
+  - Subscribe only to relevant tally IDs to reduce noise
+  - Use descriptive tally aliases for better readability
+  - Regularly review and clean up unused subscriptions
+</Card>
+
+<Card title="Notifier Security" icon="shield">
+  - Only add trusted principals to the notifiers list
+  - Use dedicated service principals for tally services
+  - Monitor logs for unauthorized access attempts
+</Card>
+
+<Card title="Performance" icon="gauge">
+  - The bot edits messages instead of creating new ones to reduce spam
+  - Message IDs are automatically cleaned up after consensus
+  - NNS Group integration uses efficient batch lookups
+</Card>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="tallyUpdate returns 'Not authorized'">
+    Make sure the calling principal is added to the notifiers list:
+    
+    ```bash
+    dfx canister call OCBot addNotifier '(principal "caller_principal")' --network ic
+    dfx canister call OCBot getNotifiers '()' --network ic
+    ```
+  </Accordion>
+  
+  <Accordion title="Subscriptions not working">
+    1. Verify the bot has joined the group/community/channel
+    2. Check subscription exists: `dfx canister call OCBot getSubscribers '(null)' --network ic`
+    3. Ensure the tally ID matches exactly
+    4. Verify the bot has permission to post messages
+  </Accordion>
+  
+  <Accordion title="Messages not appearing in NNS Group">
+    1. Enable NNS Group posting: `dfx canister call OCBot toggleNNSGroup '()' --network ic`
+    2. Verify the governance canister is NNS: `rrkah-fqaaa-aaaaa-aaaaq-cai`
+    3. Check the bot is subscribed to the NNS Group
+    4. Ensure proposal exists in the NNS Group message history
+  </Accordion>
+  
+  <Accordion title="addSubscriber returns 'Existing sub'">
+    The subscription already exists. To update it, first delete the existing subscription:
+    
+    ```bash
+    dfx canister call OCBot deleteSubscription '("tally_id", variant { ... })' --network ic
+    dfx canister call OCBot addSubscriber '("tally_id", variant { ... })' --network ic
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="ProposalBot" icon="bell" href="/bots/proposal-bot">
+    Monitor NNS proposals and broadcast updates
+  </Card>
+  
+  <Card title="Bot Service" icon="robot" href="/core/bot-service">
+    Core bot functionality and OpenChat integration
+  </Card>
+  
+  <Card title="Getting Started" icon="rocket" href="/getting-started">
+    Set up your first OpenChat bot
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Complete API documentation
+  </Card>
+</CardGroup>

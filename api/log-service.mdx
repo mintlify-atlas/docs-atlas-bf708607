@@ -1,0 +1,359 @@
+---
+title: 'LogService'
+description: 'Logging service for tracking application events and errors'
+icon: 'file-lines'
+---
+
+## Overview
+
+The LogService module provides a comprehensive logging system for your OpenChat bot. It allows you to track application events, warnings, and errors with timestamps and contextual information.
+
+## Types
+
+### LogLevel
+
+Enumeration representing the severity level of a log entry:
+
+```motoko
+public type LogLevel = {
+    #Error;  // Critical errors
+    #Warn;   // Warning messages
+    #Info;   // Informational messages
+};
+```
+
+### Log
+
+Represents a single log entry:
+
+```motoko
+public type Log = {
+    timestamp : Int;        // Nanoseconds since epoch
+    level : LogLevel;       // Severity level
+    message : Text;         // Log message
+    context : ?Text;        // Optional context information
+};
+```
+
+### LogFilter
+
+Filter criteria for querying logs:
+
+```motoko
+public type LogFilter = {
+    beforeTimestampMs : ?Int;      // Filter logs before this timestamp
+    afterTimestampMs : ?Int;       // Filter logs after this timestamp
+    level : ?LogLevel;             // Filter by log level
+    messageContains : ?Text;       // Filter by message content
+    contextContains : ?Text;       // Filter by context content
+    matchAll : ?Bool;              // If true, all filters must match (AND logic)
+                                   // If false, any filter can match (OR logic)
+};
+```
+
+### LogModel
+
+Internal model for storing logs:
+
+```motoko
+public type LogModel = {
+    var logs : LogList;
+};
+```
+
+## Initialization
+
+### initLogModel
+
+Initializes an empty log model.
+
+```motoko
+public func initLogModel() : LogModel
+```
+
+**Returns**
+- `LogModel` - A new log model with an empty log list
+
+**Example**
+
+```motoko
+import LogService "./backend/Log/LogService";
+
+let logModel = LogService.initLogModel();
+```
+
+## LogServiceImpl Class
+
+The main logging service class that manages log entries.
+
+### Constructor
+
+Creates a new LogService instance.
+
+```motoko
+public class LogServiceImpl(
+    logModel : LogModel,
+    maxLogSize : Nat,
+    isDebug : Bool
+)
+```
+
+<ParamField path="logModel" type="LogModel" required>
+  The log model to store log entries
+</ParamField>
+
+<ParamField path="maxLogSize" type="Nat" required>
+  Maximum number of log entries to retain. Older entries are automatically removed.
+</ParamField>
+
+<ParamField path="isDebug" type="Bool" required>
+  If true, logs are also printed to Debug output
+</ParamField>
+
+**Example**
+
+```motoko
+import LogService "./backend/Log/LogService";
+
+let logModel = LogService.initLogModel();
+let logger = LogService.LogServiceImpl(logModel, 1000, true);
+```
+
+## Methods
+
+### logInfo
+
+Logs an informational message.
+
+```motoko
+public func logInfo(message : Text, context : ?Text) : ()
+```
+
+<ParamField path="message" type="Text" required>
+  The log message
+</ParamField>
+
+<ParamField path="context" type="?Text">
+  Optional contextual information
+</ParamField>
+
+**Example**
+
+```motoko
+logger.logInfo("Bot started successfully", ?"initialization");
+logger.logInfo("Processing proposal", null);
+```
+
+### logWarn
+
+Logs a warning message.
+
+```motoko
+public func logWarn(message : Text, context : ?Text) : ()
+```
+
+<ParamField path="message" type="Text" required>
+  The warning message
+</ParamField>
+
+<ParamField path="context" type="?Text">
+  Optional contextual information
+</ParamField>
+
+**Example**
+
+```motoko
+logger.logWarn("API rate limit approaching", ?"openchat_api");
+logger.logWarn("Retry attempt 3 of 5", ?"proposal_fetch");
+```
+
+### logError
+
+Logs an error message.
+
+```motoko
+public func logError(message : Text, context : ?Text) : ()
+```
+
+<ParamField path="message" type="Text" required>
+  The error message
+</ParamField>
+
+<ParamField path="context" type="?Text">
+  Optional contextual information
+</ParamField>
+
+**Example**
+
+```motoko
+logger.logError("Failed to send message", ?"openchat_api");
+logger.logError("Database connection lost", null);
+```
+
+### getLogs
+
+Retrieves logs with optional filtering.
+
+```motoko
+public func getLogs(filter : ?LogFilter) : [Log]
+```
+
+<ParamField path="filter" type="?LogFilter">
+  Optional filter criteria. If null, returns all logs.
+</ParamField>
+
+<ResponseField name="return" type="[Log]">
+  Array of log entries matching the filter criteria
+</ResponseField>
+
+**Example**
+
+```motoko
+// Get all logs
+let allLogs = logger.getLogs(null);
+
+// Get only error logs
+let errorLogs = logger.getLogs(?{
+    beforeTimestampMs = null;
+    afterTimestampMs = null;
+    level = ?#Error;
+    messageContains = null;
+    contextContains = null;
+    matchAll = null;
+});
+
+// Get logs from the last hour containing "API"
+let recentApiLogs = logger.getLogs(?{
+    beforeTimestampMs = null;
+    afterTimestampMs = ?(Time.now() - 3_600_000_000_000); // 1 hour in nanoseconds
+    level = null;
+    messageContains = ?"API";
+    contextContains = null;
+    matchAll = ?true;  // Both conditions must match
+});
+
+// Get warning or error logs (OR logic)
+let criticalLogs = logger.getLogs(?{
+    beforeTimestampMs = null;
+    afterTimestampMs = null;
+    level = ?#Error;
+    messageContains = null;
+    contextContains = null;
+    matchAll = ?false;  // Any condition can match
+});
+```
+
+### clearLogs
+
+Removes all log entries.
+
+```motoko
+public func clearLogs() : ()
+```
+
+**Example**
+
+```motoko
+// Clear all logs
+logger.clearLogs();
+```
+
+## Helper Functions
+
+### matchLogFilter
+
+Internal function that determines if a log entry matches the given filter criteria.
+
+```motoko
+public func matchLogFilter(_filter : ?LogFilter, log : Log) : Bool
+```
+
+<Note>
+  This function is primarily for internal use by the LogService but is exposed for advanced filtering scenarios.
+</Note>
+
+## Complete Example
+
+```motoko
+import LogService "./backend/Log/LogService";
+import LogTypes "./backend/Log/LogTypes";
+import Time "mo:base/Time";
+
+actor BotWithLogging {
+    // Initialize logging
+    stable let logModel = LogService.initLogModel();
+    let logger = LogService.LogServiceImpl(
+        logModel,
+        1000,  // Keep last 1000 logs
+        true   // Enable debug output
+    );
+
+    // Use logging throughout your bot
+    public func processProposal(proposalId : Nat64) : async () {
+        logger.logInfo("Starting proposal processing", ?"proposal_" # Nat64.toText(proposalId));
+        
+        try {
+            // Your processing logic here
+            logger.logInfo("Proposal processed successfully", null);
+        } catch (e) {
+            logger.logError("Failed to process proposal", ?Error.message(e));
+        };
+    };
+
+    // Query logs
+    public query func getRecentErrors() : async [LogTypes.Log] {
+        logger.getLogs(?{
+            beforeTimestampMs = null;
+            afterTimestampMs = ?(Time.now() - 86_400_000_000_000); // Last 24 hours
+            level = ?#Error;
+            messageContains = null;
+            contextContains = null;
+            matchAll = ?true;
+        })
+    };
+
+    // Maintenance
+    public func clearOldLogs() : async () {
+        logger.clearLogs();
+        logger.logInfo("Logs cleared", ?"maintenance");
+    };
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use appropriate log levels">
+    - **Info**: Regular operational messages, successful operations
+    - **Warn**: Recoverable issues, deprecated features, rate limit warnings
+    - **Error**: Failed operations, exceptions, critical issues
+  </Accordion>
+
+  <Accordion title="Provide context">
+    Always include context information for easier debugging:
+    ```motoko
+    logger.logError("Failed to fetch proposal", ?"proposal_" # proposalId);
+    ```
+  </Accordion>
+
+  <Accordion title="Set appropriate maxLogSize">
+    Balance memory usage with log retention:
+    - Development: 5000+ logs for detailed debugging
+    - Production: 1000-2000 logs to manage memory
+  </Accordion>
+
+  <Accordion title="Use filters effectively">
+    Combine filters with `matchAll` for precise log queries:
+    ```motoko
+    // Find all errors in a specific context from the last hour
+    let logs = logger.getLogs(?{
+        beforeTimestampMs = null;
+        afterTimestampMs = ?(Time.now() - 3_600_000_000_000);
+        level = ?#Error;
+        messageContains = null;
+        contextContains = ?"api_call";
+        matchAll = ?true;  // All conditions must match
+    });
+    ```
+  </Accordion>
+</AccordionGroup>

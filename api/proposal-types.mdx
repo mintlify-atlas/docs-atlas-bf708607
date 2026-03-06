@@ -1,0 +1,317 @@
+---
+title: "ProposalTypes"
+description: "Type definitions for governance proposals"
+---
+
+## Overview
+
+The `ProposalTypes` module defines the core data structures for representing governance proposals in the OpenChat Bot SDK. These types are used throughout the proposal service to represent proposal data, status, and filtering arguments.
+
+## Types
+
+### ProposalId
+
+Unique identifier for a governance proposal.
+
+```motoko
+public type ProposalId = Nat64;
+```
+
+Represents a 64-bit natural number used as a unique identifier for proposals. Proposal IDs are sequential and increase over time.
+
+### Proposal
+
+Internal representation of a governance proposal with mutable fields.
+
+```motoko
+public type Proposal = {
+  id : ProposalId;
+  topicId : Int32;
+  title : Text;
+  description : ?Text;
+  proposer : Nat64;
+  timestamp : Nat64;
+  var status : ProposalStatus;
+  var deadlineTimestampSeconds : ?Nat64;
+  proposalTimestampSeconds : Nat64;
+};
+```
+
+<ParamField path="id" type="ProposalId" required>
+  Unique identifier for the proposal
+</ParamField>
+
+<ParamField path="topicId" type="Int32" required>
+  The topic/function ID that categorizes the proposal (e.g., Governance, Network Economics, etc.)
+</ParamField>
+
+<ParamField path="title" type="Text" required>
+  Human-readable title of the proposal
+</ParamField>
+
+<ParamField path="description" type="?Text">
+  Optional detailed description or summary of the proposal
+</ParamField>
+
+<ParamField path="proposer" type="Nat64" required>
+  Neuron ID of the entity that created the proposal
+</ParamField>
+
+<ParamField path="timestamp" type="Nat64" required>
+  Timestamp when the proposal was processed (in nanoseconds since epoch)
+</ParamField>
+
+<ParamField path="status" type="ProposalStatus" required>
+  Current status of the proposal (mutable field)
+</ParamField>
+
+<ParamField path="deadlineTimestampSeconds" type="?Nat64">
+  Optional deadline for voting on the proposal (in seconds since epoch)
+</ParamField>
+
+<ParamField path="proposalTimestampSeconds" type="Nat64" required>
+  Timestamp when the proposal was originally created (in seconds since epoch)
+</ParamField>
+
+### ProposalAPI
+
+API-safe representation of a proposal with immutable fields.
+
+```motoko
+public type ProposalAPI = {
+  id : ProposalId;
+  topicId : Int32;
+  title : Text;
+  description : ?Text;
+  proposer : Nat64;
+  timestamp : Nat64;
+  status : ProposalStatus;
+  deadlineTimestampSeconds : ?Nat64;
+  proposalTimestampSeconds : Nat64;
+};
+```
+
+Identical structure to `Proposal`, but all fields are immutable. This type is suitable for returning from public API methods or sending across canister boundaries.
+
+**Conversion:**
+Use `proposalToAPI()` from `ProposalMappings` to convert a `Proposal` to `ProposalAPI`.
+
+### ProposalStatus
+
+Represents the current state of a governance proposal.
+
+```motoko
+public type ProposalStatus = {
+  #Pending;
+  #Executed : {#Approved; #Rejected}
+};
+```
+
+<ResponseField name="#Pending" type="variant">
+  The proposal is currently open for voting and has not been executed yet
+</ResponseField>
+
+<ResponseField name="#Executed" type="variant">
+  The proposal has been executed with one of two outcomes:
+  - `#Approved`: The proposal was accepted and executed successfully
+  - `#Rejected`: The proposal was rejected and not executed
+</ResponseField>
+
+**Status Code Mapping:**
+The NNS governance canister uses integer status codes:
+- `1` → `#Pending`
+- `4` → `#Executed(#Approved)`
+- `2` → `#Executed(#Rejected)`
+
+### ListProposalArgs
+
+Arguments for filtering and configuring proposal list queries.
+
+```motoko
+public type ListProposalArgs = {
+  includeRewardStatus : [Int32];
+  omitLargeFields : ?Bool;
+  excludeTopic : [Int32];
+  includeAllManageNeuronProposals : ?Bool;
+  includeStatus : [Int32];
+};
+```
+
+<ParamField path="includeRewardStatus" type="[Int32]" required>
+  Array of reward status codes to include in results. Empty array means no filtering by reward status.
+</ParamField>
+
+<ParamField path="omitLargeFields" type="?Bool">
+  If `true`, large fields (like detailed proposal payloads) are omitted from results to reduce response size
+</ParamField>
+
+<ParamField path="excludeTopic" type="[Int32]" required>
+  Array of topic IDs to exclude from results. Useful for filtering out specific proposal types.
+</ParamField>
+
+<ParamField path="includeAllManageNeuronProposals" type="?Bool">
+  If `true`, includes all ManageNeuron proposals. If `false` or `null`, may filter out some ManageNeuron proposals.
+</ParamField>
+
+<ParamField path="includeStatus" type="[Int32]" required>
+  Array of status codes to include in results. Empty array means no filtering by status.
+</ParamField>
+
+**Example:**
+```motoko
+let args : ListProposalArgs = {
+  includeRewardStatus = [];
+  omitLargeFields = ?true;
+  excludeTopic = [3, 7]; // Exclude topics 3 and 7
+  includeAllManageNeuronProposals = null;
+  includeStatus = [1]; // Only include pending proposals
+};
+```
+
+## Mapping Functions
+
+The `ProposalMappings` module provides utility functions for converting between different proposal representations.
+
+### proposalToAPI
+
+Converts a `Proposal` to `ProposalAPI` format.
+
+```motoko
+public func proposalToAPI(p : Proposal) : ProposalAPI
+```
+
+<ParamField path="p" type="Proposal" required>
+  The proposal to convert
+</ParamField>
+
+<ResponseField name="ProposalAPI" type="ProposalAPI">
+  Returns an immutable API-safe version of the proposal
+</ResponseField>
+
+**Example:**
+```motoko
+let proposal : Proposal = /* ... */;
+let apiProposal = proposalToAPI(proposal);
+```
+
+### mapProposal
+
+Maps a governance canister's `ProposalInfo` to the SDK's `Proposal` type.
+
+```motoko
+public func mapProposal(
+  nnsProposal : ProposalInfo
+) : Result.Result<Proposal, Text>
+```
+
+<ParamField path="nnsProposal" type="ProposalInfo" required>
+  Raw proposal data from the governance canister
+</ParamField>
+
+<ResponseField name="Result" type="Result<Proposal, Text>">
+  Returns:
+  - `#ok(Proposal)` if mapping succeeds
+  - `#err(Text)` if required fields are missing or status is unknown
+</ResponseField>
+
+**Validation:**
+Returns an error if:
+- Proposal has no ID
+- Proposal has no proposer
+- Status cannot be mapped
+
+**Example:**
+```motoko
+let nnsProposal : ProposalInfo = /* from governance canister */;
+switch (mapProposal(nnsProposal)) {
+  case (#ok(proposal)) {
+    // Successfully mapped
+  };
+  case (#err(error)) {
+    Debug.print("Mapping error: " # error);
+  };
+};
+```
+
+### mapGetProposals
+
+Maps an array of `ProposalInfo` objects to an array of `Proposal` objects, silently skipping invalid proposals.
+
+```motoko
+public func mapGetProposals(
+  nnsProposals : [ProposalInfo]
+) : [Proposal]
+```
+
+<ParamField path="nnsProposals" type="[ProposalInfo]" required>
+  Array of raw proposal data from the governance canister
+</ParamField>
+
+<ResponseField name="Proposals" type="[Proposal]">
+  Returns an array of successfully mapped proposals. Invalid proposals are silently excluded.
+</ResponseField>
+
+**Example:**
+```motoko
+let nnsProposals : [ProposalInfo] = /* from governance canister */;
+let proposals = mapGetProposals(nnsProposals);
+Debug.print("Mapped " # Int.toText(proposals.size()) # " proposals");
+```
+
+## Status Mapping
+
+Internal function that maps NNS status codes to `ProposalStatus`:
+
+```motoko
+func mapStatus(nnsStatus : Int32) : Result.Result<ProposalStatus, Text>
+```
+
+| NNS Status Code | ProposalStatus |
+|-----------------|----------------|
+| 1 | `#Pending` |
+| 4 | `#Executed(#Approved)` |
+| 2 | `#Executed(#Rejected)` |
+| Other | Error: "Unknown proposal status" |
+
+## Usage Example
+
+Complete example of fetching and working with proposals:
+
+```motoko
+import ProposalService "ProposalService";
+import ProposalTypes "ProposalTypes";
+import ProposalMappings "ProposalMappings";
+
+let proposalService = ProposalService.ProposalService(governanceService, logService);
+
+// Get valid topics
+let #ok(topics) = await* proposalService.getValidTopicIds("rrkah-fqaaa-aaaaa-aaaaq-cai")
+else { return #err("Failed to get topics") };
+
+// Create filter arguments
+let args : ProposalTypes.ListProposalArgs = {
+  includeRewardStatus = [];
+  omitLargeFields = ?true;
+  excludeTopic = []; // Include all topics
+  includeAllManageNeuronProposals = ?true;
+  includeStatus = [1]; // Only pending proposals
+};
+
+// Fetch proposals after ID 10000
+let #ok(response) = await* proposalService.listProposalsAfterId(
+  "rrkah-fqaaa-aaaaa-aaaaq-cai",
+  ?10000,
+  args
+) else { return #err("Failed to fetch proposals") };
+
+// Map to SDK format
+let proposals = ProposalMappings.mapGetProposals(response.proposal_info);
+
+// Convert to API format for response
+let apiProposals = Array.map(proposals, ProposalMappings.proposalToAPI);
+```
+
+## Related
+
+- [ProposalService](/api/proposal-service) - Service methods for working with proposals
+- [GovernanceTypes](/api/governance-types) - Underlying governance canister types

@@ -1,0 +1,360 @@
+---
+title: "Installation"
+description: "Set up your development environment for building OpenChat bots with the SDK"
+icon: "download"
+---
+
+This guide walks you through installing all the required tools and dependencies to build OpenChat bots using the Motoko SDK.
+
+## System Requirements
+
+Before you begin, ensure your system meets these requirements:
+
+- **Operating System**: macOS, Linux, or WSL2 on Windows
+- **Node.js**: Version 16 or higher
+- **Memory**: At least 4GB RAM available
+- **Disk Space**: 2GB free space for tools and dependencies
+
+## Step 1: Install Node.js
+
+The SDK requires Node.js version 16 or higher for package management and development tools.
+
+<Tabs>
+  <Tab title="macOS">
+    Using Homebrew:
+    ```bash
+    brew install node
+    ```
+    
+    Or download from [nodejs.org](https://nodejs.org/)
+  </Tab>
+  
+  <Tab title="Linux">
+    Using apt (Ubuntu/Debian):
+    ```bash
+    curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    ```
+    
+    Using dnf (Fedora):
+    ```bash
+    sudo dnf install nodejs
+    ```
+  </Tab>
+  
+  <Tab title="Windows (WSL2)">
+    First install WSL2, then follow the Linux instructions above.
+    
+    See [Microsoft's WSL installation guide](https://docs.microsoft.com/en-us/windows/wsl/install)
+  </Tab>
+</Tabs>
+
+Verify the installation:
+
+```bash
+node --version  # Should be v16.0.0 or higher
+npm --version   # Should be 8.0.0 or higher
+```
+
+## Step 2: Install dfx (Internet Computer SDK)
+
+`dfx` is the command-line tool for developing on the Internet Computer. The SDK requires dfx version 0.14 or higher.
+
+<Steps>
+  <Step title="Install dfx">
+    Run the dfx installer:
+    
+    ```bash
+    sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+    ```
+    
+    This installs dfx to `~/.local/share/dfx/bin/dfx`
+  </Step>
+  
+  <Step title="Add dfx to your PATH">
+    The installer typically adds dfx to your PATH automatically. If not, add this to your `~/.bashrc` or `~/.zshrc`:
+    
+    ```bash
+    export PATH="$HOME/.local/share/dfx/bin:$PATH"
+    ```
+    
+    Then reload your shell configuration:
+    ```bash
+    source ~/.bashrc  # or ~/.zshrc
+    ```
+  </Step>
+  
+  <Step title="Verify installation">
+    ```bash
+    dfx --version  # Should be 0.14.0 or higher
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  For more installation options and troubleshooting, see the [official dfx installation guide](https://internetcomputer.org/docs/current/developer-docs/build/install-upgrade-remove).
+</Note>
+
+## Step 3: Clone the Repository
+
+Clone the OpenChat Bot SDK repository:
+
+```bash
+git clone https://github.com/AleDema/OC-Sample-Bot.git
+cd OC-Sample-Bot
+```
+
+## Step 4: Install Dependencies
+
+The SDK uses both npm and Mops (Motoko Package Manager) for dependencies.
+
+<Steps>
+  <Step title="Install npm packages">
+    Install Node.js development dependencies:
+    
+    ```bash
+    npm install
+    ```
+    
+    This installs:
+    - `ic-mops`: Motoko package manager
+    - `mo-dev`: Live reload development server
+    - `npm-run-all`: Script runner
+    - `prettier` and `prettier-plugin-motoko`: Code formatting
+  </Step>
+  
+  <Step title="Install Mops packages">
+    Mops packages are automatically installed via the `postinstall` script, but you can also run manually:
+    
+    ```bash
+    npm run sources  # or: mops install
+    ```
+    
+    This installs Motoko dependencies from `mops.toml`:
+    - `base`: Motoko base library
+    - `map`: Efficient map data structure
+    - `time-consts`: Time constants
+    - `prng`: Pseudo-random number generator
+    - `datetime`: Date and time utilities
+  </Step>
+</Steps>
+
+## Step 5: Set Up Local Development Environment
+
+Configure your local Internet Computer replica for development:
+
+<Steps>
+  <Step title="Start the local replica">
+    Start a local Internet Computer replica in the background:
+    
+    ```bash
+    dfx start --clean --background
+    ```
+    
+    The `--clean` flag starts with a fresh state, and `--background` runs it in the background.
+  </Step>
+  
+  <Step title="Create and deploy canisters">
+    Create canisters and deploy them to your local replica:
+    
+    ```bash
+    npm run setup
+    ```
+    
+    This command:
+    1. Installs all dependencies
+    2. Creates canister IDs
+    3. Generates type bindings
+    4. Deploys canisters to the local replica
+  </Step>
+  
+  <Step title="Start the development server">
+    Start the live reload development server:
+    
+    ```bash
+    npm start
+    ```
+    
+    This runs `mo-dev`, which automatically:
+    - Watches for file changes
+    - Recompiles and redeploys on save
+    - Generates updated type bindings
+  </Step>
+</Steps>
+
+<Tip>
+  Keep `npm start` running in a terminal while you develop. It will automatically rebuild and redeploy your code when you save changes.
+</Tip>
+
+## Step 6: Verify Installation
+
+Verify everything is working correctly:
+
+<CodeGroup>
+```bash Check canister IDs
+cat canister_ids.json
+```
+
+```bash Check canister status
+dfx canister status OCBot
+```
+
+```bash Call a test function
+dfx canister call OCBot getBotStatus
+```
+</CodeGroup>
+
+Expected output for `getBotStatus`:
+```
+(variant { NotInitialized })
+```
+
+## Project Structure
+
+After installation, your project should look like this:
+
+```
+OC-Sample-Bot/
+├── backend/              # Motoko source code
+│   ├── Bot/             # Bot service implementation
+│   ├── OC/              # OpenChat API integration
+│   ├── Governance/      # NNS governance integration
+│   ├── Proposal/        # Proposal processing
+│   ├── TallyBot/        # TallyBot implementation
+│   ├── ProposalBot/     # ProposalBot implementation
+│   └── Log/             # Logging infrastructure
+├── node_modules/        # npm dependencies
+├── .dfx/                # dfx cache and build artifacts
+├── dfx.json             # Canister configuration
+├── mops.toml            # Motoko dependencies
+├── package.json         # npm configuration
+└── canister_ids.json    # Generated canister IDs
+```
+
+## Configuration Files
+
+### dfx.json
+
+The `dfx.json` file defines your canisters:
+
+```json
+{
+  "canisters": {
+    "OCBot": {
+      "type": "motoko",
+      "main": "backend/TallyBot/TallyBotMain.mo"
+    },
+    "CG_Bot": {
+      "type": "motoko",
+      "main": "backend/ProposalBotMain.mo"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "npm run --silent sources"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 2,
+  "dfx": "0.24.1"
+}
+```
+
+### mops.toml
+
+The `mops.toml` file defines Motoko dependencies:
+
+```toml
+[dependencies]
+base = "0.11.1"
+map = "9.0.1"
+time-consts = "1.0.1"
+prng = "0.0.3"
+datetime = "0.1.3"
+```
+
+## Environment Variables
+
+After running `dfx deploy`, dfx generates a `.env` file with canister IDs:
+
+```bash
+CANISTER_ID_OCBOT=rrkah-fqaaa-aaaaa-aaaaq-cai
+CANISTER_ID_CG_BOT=ryjl3-tyaaa-aaaaa-aaaba-cai
+```
+
+These can be used in scripts or other tools that need to interact with your canisters.
+
+## Optional: Install Candid UI
+
+For visual inspection and testing of your canister interfaces:
+
+```bash
+dfx canister install --all --mode reinstall
+```
+
+Then access the Candid UI at:
+```
+http://localhost:4943/?canisterId=<CANDID_UI_CANISTER_ID>&id=<YOUR_CANISTER_ID>
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="dfx: command not found">
+    Ensure dfx is in your PATH. Add to your shell configuration:
+    ```bash
+    export PATH="$HOME/.local/share/dfx/bin:$PATH"
+    ```
+    Then reload: `source ~/.bashrc`
+  </Accordion>
+  
+  <Accordion title="Mops packages fail to install">
+    Ensure you have internet connectivity and try:
+    ```bash
+    rm -rf .mops
+    mops install
+    ```
+  </Accordion>
+  
+  <Accordion title="Canister deployment fails">
+    Stop and restart dfx:
+    ```bash
+    dfx stop
+    dfx start --clean --background
+    npm run setup
+    ```
+  </Accordion>
+  
+  <Accordion title="Port 4943 already in use">
+    dfx is already running. Either use the existing instance or stop it:
+    ```bash
+    dfx stop
+    dfx start --clean --background
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Deploy your first bot and send a message
+  </Card>
+  <Card title="Bot Architecture" icon="sitemap" href="/concepts/bot-architecture">
+    Understand the SDK's module structure
+  </Card>
+  <Card title="Bot Initialization" icon="power-off" href="/guides/bot-initialization">
+    Learn how to register and configure your bot
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/bot-service">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Additional Resources
+
+- [Internet Computer Documentation](https://internetcomputer.org/docs)
+- [Motoko Programming Language Guide](https://internetcomputer.org/docs/current/motoko/main/about-this-guide)
+- [Mops Package Manager](https://mops.one)
+- [OpenChat Platform](https://oc.app)
+- [dfx CLI Reference](https://internetcomputer.org/docs/current/references/cli-reference/)

@@ -1,0 +1,204 @@
+---
+title: "ProposalService"
+description: "Service for fetching and processing governance proposals"
+---
+
+## Overview
+
+The `ProposalService` class provides methods for retrieving and processing governance proposals from NNS and SNS governance canisters. It works in conjunction with `GovernanceService` to fetch proposal data and format it for display.
+
+## Constructor
+
+### ProposalService
+
+Creates a new ProposalService instance.
+
+```motoko
+public class ProposalService(
+  governanceService : GovernanceService,
+  logService : LogService
+)
+```
+
+<ParamField path="governanceService" type="GovernanceService" required>
+  The governance service instance used to make governance canister calls
+</ParamField>
+
+<ParamField path="logService" type="LogService" required>
+  The log service instance for logging operations
+</ParamField>
+
+## Methods
+
+### getValidTopicIds
+
+Retrieves valid topic IDs (also called functions) for a given governance canister.
+
+```motoko
+public func getValidTopicIds(
+  governanceId : Text
+) : async* Result.Result<[(Int32, Text, ?Text)], Text>
+```
+
+<ParamField path="governanceId" type="Text" required>
+  The canister ID of the governance canister (e.g., `"rrkah-fqaaa-aaaaa-aaaaq-cai"` for NNS)
+</ParamField>
+
+<ResponseField name="Result" type="Result<[(Int32, Text, ?Text)], Text>">
+  Returns a tuple array where each entry contains:
+  - Topic ID (Int32)
+  - Topic name (Text)
+  - Optional description (?Text)
+  
+  For NNS governance, returns pre-defined NNS functions. For SNS governance, fetches functions from the governance canister.
+</ResponseField>
+
+**Example:**
+```motoko
+let topicsResult = await* proposalService.getValidTopicIds("rrkah-fqaaa-aaaaa-aaaaq-cai");
+switch (topicsResult) {
+  case (#ok(topics)) {
+    // topics is [(Int32, Text, ?Text)]
+    for ((id, name, description) in Array.vals(topics)) {
+      Debug.print("Topic: " # name);
+    };
+  };
+  case (#err(error)) {
+    Debug.print("Error: " # error);
+  };
+};
+```
+
+### listProposalsAfterId
+
+Fetches all proposals after a specific proposal ID, paginating through results automatically.
+
+```motoko
+public func listProposalsAfterId(
+  governanceId : Text,
+  _after : ?Nat64,
+  args : ListProposalArgs
+) : async* Result.Result<ListProposalInfoResponse, Text>
+```
+
+<ParamField path="governanceId" type="Text" required>
+  The canister ID of the governance canister
+</ParamField>
+
+<ParamField path="_after" type="?Nat64">
+  Optional proposal ID to start fetching from. If `null`, fetches the most recent proposal only.
+</ParamField>
+
+<ParamField path="args" type="ListProposalArgs" required>
+  Configuration for proposal filtering and inclusion. See [ListProposalArgs](/api/proposal-types#listproposalargs).
+</ParamField>
+
+<ResponseField name="Result" type="Result<ListProposalInfoResponse, Text>">
+  Returns a `ListProposalInfoResponse` containing an array of `ProposalInfo` objects, or an error message.
+</ResponseField>
+
+**Behavior:**
+- Automatically paginates through proposals in batches of 50
+- Fetches proposals with ID greater than the `_after` parameter
+- Results are returned in chronological order (oldest to newest)
+- Stops fetching when it encounters a proposal with ID less than or equal to `_after`
+
+**Example:**
+```motoko
+let args = {
+  includeRewardStatus = [];
+  omitLargeFields = ?true;
+  excludeTopic = [];
+  includeAllManageNeuronProposals = null;
+  includeStatus = [];
+};
+
+let proposalsResult = await* proposalService.listProposalsAfterId(
+  "rrkah-fqaaa-aaaaa-aaaaq-cai",
+  ?12345,
+  args
+);
+```
+
+## Utility Functions
+
+### processIncludeTopics
+
+Filters out specified topics from a list of valid topics, creating an exclusion list.
+
+```motoko
+public func processIncludeTopics(
+  validTopics : [(Int32, Text, ?Text)],
+  topicsToInclude : [Int32]
+) : [Int32]
+```
+
+<ParamField path="validTopics" type="[(Int32, Text, ?Text)]" required>
+  Array of all valid topics with their IDs, names, and descriptions
+</ParamField>
+
+<ParamField path="topicsToInclude" type="[Int32]" required>
+  Array of topic IDs that should be included in results
+</ParamField>
+
+<ResponseField name="Result" type="[Int32]">
+  Returns an array of topic IDs to exclude (inverse of `topicsToInclude`)
+</ResponseField>
+
+**Example:**
+```motoko
+let validTopics = [(1, "Governance", null), (2, "SNS & Neurons", null), (3, "Exchange Rate", null)];
+let topicsToInclude = [1, 2];
+let excludeTopics = processIncludeTopics(validTopics, topicsToInclude);
+// Result: [3]
+```
+
+### ListProposalArgsDefault
+
+Returns default arguments for listing proposals.
+
+```motoko
+public func ListProposalArgsDefault() : ListProposalArgs
+```
+
+<ResponseField name="ListProposalArgs" type="ListProposalArgs">
+  Returns a default `ListProposalArgs` configuration:
+  - `includeRewardStatus`: empty array
+  - `omitLargeFields`: `true`
+  - `excludeTopic`: empty array
+  - `includeAllManageNeuronProposals`: `null`
+  - `includeStatus`: empty array
+</ResponseField>
+
+**Example:**
+```motoko
+let defaultArgs = ListProposalArgsDefault();
+let proposals = await* proposalService.listProposalsAfterId(
+  governanceId,
+  null,
+  defaultArgs
+);
+```
+
+## Integration with GovernanceService
+
+The `ProposalService` relies on `GovernanceService` for low-level governance canister interactions:
+
+1. **Fetching Functions**: Uses `governanceService.getGovernanceFunctions()` to retrieve valid topics for SNS governance
+2. **Listing Proposals**: Uses `governanceService.listProposals()` for paginated proposal retrieval
+3. **Pagination**: Automatically handles pagination by making multiple calls to `listProposals()` with appropriate `before_proposal` cursors
+
+## Constants
+
+<ParamField path="BATCH_SIZE_LIMIT" type="Nat" default="50">
+  Maximum number of proposals to fetch in a single batch
+</ParamField>
+
+<ParamField path="NNS_GOVERNANCE_ID" type="Text" default="rrkah-fqaaa-aaaaa-aaaaq-cai">
+  The canister ID of the NNS governance canister
+</ParamField>
+
+## Related
+
+- [ProposalTypes](/api/proposal-types) - Type definitions for proposals
+- [GovernanceService](/api/governance-service) - Low-level governance canister interactions

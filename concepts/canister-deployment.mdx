@@ -1,0 +1,486 @@
+---
+title: 'Canister Deployment'
+description: 'Understanding canister architecture, deployment, and management on the Internet Computer'
+---
+
+## Canister Architecture
+
+The OpenChat Bot SDK is designed to deploy as smart contracts (canisters) on the Internet Computer blockchain. Canisters are WebAssembly modules that can store data and respond to messages.
+
+<CardGroup cols={2}>
+  <Card title="OCBot (TallyBot)" icon="chart-bar">
+    Tracks governance proposal tallies and voting statistics
+  </Card>
+  <Card title="CG_Bot (ProposalBot)" icon="bell">
+    Sends automated notifications for new proposals
+  </Card>
+</CardGroup>
+
+## Two-Canister Design
+
+The SDK includes two separate canister implementations:
+
+### OCBot (TallyBot)
+
+**Main File:** `backend/TallyBot/TallyBotMain.mo`
+
+```motoko
+shared ({ caller }) actor class OCBot() = Self {
+  stable var custodians = List.make<Principal>(caller);
+  stable var allowedNotifiers = List.nil<Principal>();
+  
+  stable let botData = BS.initModel();
+  stable let logs = LS.initLogModel();
+  stable let tallyModel = TallyBot.initTallyModel();
+  
+  let ocService = OCS.OCServiceImpl();
+  let logService = LS.LogServiceImpl(logs, 100, true);
+  let botService = BS.BotServiceImpl(botData, ocService, logService);
+  let tallyBot = TallyBot.TallyBot(tallyModel, botService, logService);
+};
+```
+
+**Purpose:**
+- Receives tally updates from authorized notifiers
+- Formats and posts voting statistics to subscribed channels
+- Manages subscriptions for multiple governance canisters
+- Tracks message IDs for editing tally updates
+
+### CG_Bot (ProposalBot)
+
+**Main File:** `backend/ProposalBot/ProposalBotMain.mo`
+
+```motoko
+shared ({ caller }) actor class OCBot() = Self {
+  stable var custodians = List.make<Principal>(caller);
+  
+  stable let botData = BS.initModel();
+  stable let logs = LS.initLogModel();
+  stable let proposalBotData = PB.initModel();
+  
+  let ocService = OCS.OCServiceImpl();
+  let logService = LS.LogServiceImpl(logs, 100, true);
+  let botService = BS.BotServiceImpl(botData, ocService, logService);
+  let governanceService = GS.GovernanceService();
+  let proposalService = PS.ProposalService(governanceService, logService);
+  let proposalBot = PB.ProposalBot(proposalBotData, botService, proposalService, logService);
+};
+```
+
+**Purpose:**
+- Polls governance canisters for new proposals
+- Formats and posts proposal notifications to channels
+- Manages topic-based subscriptions
+- Handles periodic timer-based updates
+
+<Note>
+  While both canisters are named `OCBot` in their source, they are deployed as separate canisters with different configurations in `dfx.json`.
+</Note>
+
+## dfx.json Configuration
+
+The project's `dfx.json` file defines the canister configuration:
+
+```json
+{
+  "canisters": {
+    "OCBot": {
+      "type": "motoko",
+      "main": "backend/TallyBot/TallyBotMain.mo"
+    },
+    "CG_Bot": {
+      "type": "motoko",
+      "main": "backend/ProposalBot/ProposalBotMain.mo"
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": "npm run --silent sources"
+    }
+  },
+  "output_env_file": ".env",
+  "version": 2,
+  "dfx": "0.24.1"
+}
+```
+
+## Cycles Management
+
+### Understanding Cycles
+
+Cycles are the "fuel" that powers computation and storage on the Internet Computer:
+
+- **1 XDR** ≈ **1 trillion cycles** (1T)
+- Used for canister operations, storage, and message execution
+- Canisters must maintain a cycle balance to remain active
+
+### Required Cycles
+
+<CardGroup cols={2}>
+  <Card title="Canister Creation" icon="plus">
+    ~0.5 XDR (500B cycles) per canister
+  </Card>
+  <Card title="Bot Registration" icon="user-plus">
+    10 XDR (10T cycles) fee to OpenChat
+  </Card>
+  <Card title="Recommended Initial" icon="coins">
+    12+ XDR (12T cycles) total per bot
+  </Card>
+  <Card title="Ongoing Operations" icon="rotate">
+    Variable based on activity
+  </Card>
+</CardGroup>
+
+### Cycle Breakdown
+
+```motoko
+let BOT_REGISTRATION_FEE: Nat = 10_000_000_000_000; // 10T cycles (10 XDR)
+```
+
+When calling `initBot()`:
+```motoko
+Cycles.add<system>(BOT_REGISTRATION_FEE);
+let res = await* ocService.registerBot(USER_INDEX_CANISTER, {...});
+```
+
+## Local Deployment
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) >= 16
+- [dfx](https://internetcomputer.org/docs/current/developer-docs/build/install-upgrade-remove) >= 0.24.1
+
+### Setup Steps
+
+<Accordion title="1. Clone and Install">
+  ```bash
+  git clone <repository-url>
+  cd <project-directory>
+  npm install
+  ```
+</Accordion>
+
+<Accordion title="2. Start Local Replica">
+  ```bash
+  dfx start --clean --background
+  ```
+  
+  This starts a local Internet Computer replica for testing.
+</Accordion>
+
+<Accordion title="3. Deploy Canisters">
+  ```bash
+  dfx deploy
+  ```
+  
+  Or deploy individually:
+  ```bash
+  dfx deploy OCBot
+  dfx deploy CG_Bot
+  ```
+</Accordion>
+
+<Accordion title="4. Get Canister IDs">
+  ```bash
+  dfx canister id OCBot
+  dfx canister id CG_Bot
+  ```
+  
+  These IDs are used to interact with your canisters.
+</Accordion>
+
+## Production Deployment
+
+### Step 1: Create Canister with Cycles
+
+Create a canister with sufficient cycles:
+
+```bash
+dfx canister create OCBot \
+  --network ic \
+  --with-cycles 12_000_000_000_000
+```
+
+<Note>
+  The `--with-cycles` flag specifies 12 XDR (12 trillion cycles), which covers:
+  - 0.5 XDR for canister creation
+  - 10 XDR for OpenChat bot registration
+  - 1.5 XDR buffer for operations
+</Note>
+
+### Step 2: Deploy to Internet Computer
+
+```bash
+dfx deploy --network ic OCBot
+```
+
+Or deploy both canisters:
+
+```bash
+dfx deploy --network ic
+```
+
+### Step 3: Initialize the Bot
+
+```bash
+dfx canister call OCBot initBot \
+  '("my_bot_name", opt "My Bot Display Name")' \
+  --network ic
+```
+
+### Step 4: Add Yourself as Custodian
+
+```bash
+dfx canister call OCBot addCustodian \
+  '(principal "your-principal-id")' \
+  --network ic
+```
+
+## Canister Management
+
+### Checking Canister Status
+
+The SDK includes built-in methods to check canister health:
+
+```motoko
+public shared({ caller }) func getCanisterStatus() : async Result.Result<CanisterStatus, Text> {
+  if (not G.isCustodian(caller, custodians)) {
+    return #err("Not authorized");
+  };
+  
+  let management_canister_actor : ManagementCanisterActor = actor("aaaaa-aa");
+  let res = await management_canister_actor.canister_status({
+    canister_id = Principal.fromActor(Self);
+  });
+  
+  let canister_status = {
+    cycle_balance = res.cycles;
+    memory_used = res.memory_size;
+    daily_burn = res.idle_cycles_burned_per_day;
+    controllers = res.settings.controllers;
+  };
+  
+  #ok(canister_status);
+};
+```
+
+### CLI Status Check
+
+```bash
+dfx canister call OCBot getCanisterStatus --network ic
+```
+
+**Response:**
+```candid
+(variant {
+  ok = record {
+    cycle_balance = 8_500_000_000_000;
+    memory_used = 2_048_576;
+    daily_burn = 45_000_000;
+    controllers = vec { principal "xxxxx-xxxxx-xxxxx" };
+  }
+})
+```
+
+### Topping Up Cycles
+
+When cycles run low:
+
+```bash
+dfx canister deposit-cycles 5_000_000_000_000 OCBot --network ic
+```
+
+Or use the NNS dapp to send cycles.
+
+## Upgrade Considerations
+
+### Stable Variables
+
+All state that must persist across upgrades should use the `stable` keyword:
+
+```motoko
+stable var custodians = List.make<Principal>(caller);
+stable let botData = BS.initModel();
+stable let logs = LS.initLogModel();
+stable let tallyModel = TallyBot.initTallyModel();
+```
+
+<Card title="Critical" icon="triangle-exclamation">
+  Variables not marked as `stable` will be reset to their initial values during canister upgrades!
+</Card>
+
+### Pre-Upgrade and Post-Upgrade Hooks
+
+The ProposalBot includes upgrade hooks:
+
+```motoko
+system func postupgrade() {
+  if (Option.isSome(proposalBotData.timerId)) {
+    proposalBotData.timerId := ?Timer.recurringTimer<system>(
+      #seconds(5 * 60), 
+      func() : async () {
+        await proposalBot.update(proposalBotData.lastProposalId);
+      }
+    );
+  }
+};
+```
+
+This ensures timers are restarted after upgrades.
+
+### Upgrade Process
+
+```bash
+# Build the updated code
+dfx build OCBot --network ic
+
+# Install the upgrade
+dfx canister install OCBot \
+  --network ic \
+  --mode upgrade
+```
+
+<Accordion title="Upgrade Modes">
+  - `install`: Fresh install (wipes all data)
+  - `upgrade`: Preserves stable variables
+  - `reinstall`: Wipes data but keeps canister ID
+  
+  **Always use `upgrade` mode in production!**
+</Accordion>
+
+## Monitoring and Maintenance
+
+### View Logs
+
+```bash
+dfx canister call OCBot getLogs '(null)' --network ic
+```
+
+With filters:
+```bash
+dfx canister call OCBot getLogs \
+  '(opt variant { level = variant { Error } })' \
+  --network ic
+```
+
+### Clear Logs
+
+```bash
+dfx canister call OCBot clearLogs --network ic
+```
+
+### Check Bot Status
+
+```bash
+dfx canister call OCBot getBotStatus --network ic
+```
+
+**Possible States:**
+- `#NotInitialized`: Bot not yet registered with OpenChat
+- `#Initializing`: Registration in progress
+- `#Initialized`: Bot ready to use
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Controller Management" icon="shield">
+    Keep canister controllers to a minimum and use hardware wallets
+  </Card>
+  <Card title="Custodian List" icon="users">
+    Only add trusted principals to the custodian list
+  </Card>
+  <Card title="Cycle Monitoring" icon="bell">
+    Set up alerts when cycle balance drops below threshold
+  </Card>
+  <Card title="Regular Backups" icon="floppy-disk">
+    Export stable variable state regularly
+  </Card>
+</CardGroup>
+
+### Controller vs Custodian
+
+- **Controller**: Has full control over the canister (can upgrade, delete, etc.)
+- **Custodian**: Application-level admin (can call admin functions but cannot modify canister)
+
+```motoko
+// Set on canister creation
+let controllers = [your_principal];
+
+// Managed in code
+stable var custodians = List.make<Principal>(caller);
+```
+
+## Troubleshooting
+
+### Bot Registration Failed
+
+**Symptom:** `InsufficientCyclesProvided` error
+
+**Solution:**
+```bash
+dfx canister deposit-cycles 10_000_000_000_000 OCBot --network ic
+dfx canister call OCBot initBot '("bot_name", null)' --network ic
+```
+
+### Out of Cycles
+
+**Symptom:** Canister stops responding
+
+**Solution:**
+```bash
+dfx canister deposit-cycles 5_000_000_000_000 OCBot --network ic
+```
+
+### Cannot Join Group
+
+**Symptom:** `#NotAuthorized` or `#GroupNotFound`
+
+**Solution:**
+1. Verify bot is initialized
+2. Check if group requires invite code
+3. Ensure bot hasn't been blocked
+
+### Upgrade Lost State
+
+**Symptom:** Data missing after upgrade
+
+**Solution:**
+- Always mark persistent data as `stable`
+- Test upgrades on local replica first
+- Consider implementing state export/import functions
+
+## Canister ID Management
+
+Canister IDs are stored in `canister_ids.json`:
+
+```json
+{
+  "OCBot": {
+    "ic": "xxxxx-xxxxx-xxxxx-xxxxx-cai"
+  },
+  "CG_Bot": {
+    "ic": "yyyyy-yyyyy-yyyyy-yyyyy-cai"
+  }
+}
+```
+
+<Note>
+  This file is automatically generated after deployment and should be committed to version control for production deployments.
+</Note>
+
+## Advanced: Multi-Environment Deployment
+
+Support different environments:
+
+```bash
+# Local development
+dfx deploy --network local
+
+# Staging on IC
+dfx deploy --network ic --identity staging
+
+# Production on IC
+dfx deploy --network ic --identity production
+```
+
+Each environment can have its own canister IDs and configuration.

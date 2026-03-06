@@ -1,0 +1,226 @@
+---
+title: 'Bot Initialization'
+description: 'Register and configure your OpenChat bot on the Internet Computer'
+---
+
+## Overview
+
+Before your bot can interact with OpenChat, it must be registered and initialized. This process requires cycles payment and involves several configuration steps.
+
+<Warning>
+  Bot registration requires **at least 10 XDR in cycles** (10,000,000,000,000 cycles). Make sure your canister has sufficient cycles before calling `initBot`.
+</Warning>
+
+## Bot Status Lifecycle
+
+Your bot progresses through three states during initialization:
+
+- `#NotInitialized` - Initial state, bot has not been registered
+- `#Initializing` - Registration in progress with OpenChat
+- `#Initialized` - Bot successfully registered and ready to use
+
+## Prerequisites
+
+### Canister Cycles
+
+When deploying to mainnet, create your canister with sufficient cycles:
+
+```bash
+dfx canister --network ic create OCBot --with-cycles 12_000_000_000_000
+```
+
+This provides:
+- 0.5 XDR for canister instantiation
+- 10 XDR for OpenChat bot registration fee
+- 1.5 XDR for operational costs
+
+### Admin Access
+
+Add your principal as a custodian to access management endpoints:
+
+```bash
+dfx canister call OCBot addCustodian '(principal "${your-principal}")' --ic
+```
+
+## Initializing Your Bot
+
+<Steps>
+  <Step title="Call initBot with bot name">
+    The `initBot` function registers your canister as an OpenChat bot. You can provide an optional display name:
+
+    ```bash
+    # With both name and displayName
+    dfx canister call OCBot initBot '("bot_name", opt "Display Name")' --ic
+
+    # With name only (no displayName)
+    dfx canister call OCBot initBot '("bot_name", null)' --ic
+    ```
+
+    <Note>
+      The bot name must be unique across OpenChat. Choose a descriptive, memorable name.
+    </Note>
+  </Step>
+
+  <Step title="Understand the registration process">
+    When you call `initBot`, the following occurs:
+
+    ```motoko
+    // From BotService.mo:61-105
+    public func initBot<system>(name : Text, _displayName : ?Text) : async Result.Result<(), Text>{
+      switch(botModel.botStatus){
+        case(#NotInitialized){
+          botModel.botStatus := #Initializing;
+          Cycles.add<system>(BOT_REGISTRATION_FEE); // 10T cycles
+          let res = await* ocService.registerBot(USER_INDEX_CANISTER, {
+            username = name;
+            displayName = _displayName
+          });
+          // Handle response...
+        };
+        case(#Initializing){ return #err("Initializing") };
+        case(#Initialized){ return #err("Initialized") };
+      }
+    };
+    ```
+
+    The bot status transitions to `#Initializing` and exactly 10 XDR in cycles is attached to the registration call.
+  </Step>
+
+  <Step title="Handle registration responses">
+    The registration can return several responses:
+
+    **Success Response:**
+    ```motoko
+    #Success -> botStatus := #Initialized
+    ```
+
+    **Error Responses:**
+    ```motoko
+    #AlreadyRegistered -> "AlreadyRegistered"
+    #InsufficientCyclesProvided(n) -> "Not enough cycles. Required: {n}"
+    ```
+
+    Your bot status reverts to `#NotInitialized` on error, allowing retry.
+  </Step>
+
+  <Step title="Verify bot status">
+    Check that initialization succeeded:
+
+    ```bash
+    dfx canister call OCBot getBotStatus
+    ```
+
+    Expected response:
+    ```
+    (variant { Initialized })
+    ```
+  </Step>
+</Steps>
+
+## Configuring Bot Avatar
+
+After initialization, you can set a custom avatar for your bot:
+
+### Avatar Requirements
+
+- Maximum size: 800KB (819,200 bytes)
+- Supported formats: Any format supported by OpenChat
+- Must be uploaded to OpenChat storage first
+
+### Setting Avatar
+
+```motoko
+// From BotService.mo:125-149
+public func setAvatar(args : SetAvatarArgs) : async* Result.Result<SetAvatarResponse, Text>{
+  if(not validateAvatar(args)){
+    return #err("Avatar too big");
+  };
+  
+  switch(args.avatar){
+    case(?avatar){
+      switch(await* ocService.setAvatar(USER_INDEX_CANISTER, {avatar_id = ?avatar.id})){
+        case(#ok(res)){
+          return #ok(#Success);
+        };
+        case(#err(msg)){
+          return #err("Error: " # msg);
+        };
+      };
+    };
+    case(_){ return #err("Avatar not found") };
+  };
+};
+```
+
+### Avatar Type Definition
+
+```motoko
+public type SetAvatarArgs = {
+  avatar : ?Document;
+};
+
+public type Document = {
+  id : Nat;
+  data : Blob;
+  mime_type : Text;
+};
+```
+
+<Warning>
+  The avatar must first be uploaded to OpenChat storage and assigned an ID before you can reference it in `setAvatar`.
+</Warning>
+
+## Error Handling
+
+Always check for errors during initialization:
+
+```motoko
+let result = await botService.initBot("my_bot", ?"My Bot");
+switch(result){
+  case(#ok(_)){
+    // Initialization successful
+    logService.logInfo("Bot initialized successfully", null);
+  };
+  case(#err(msg)){
+    // Handle error
+    logService.logError("Bot initialization failed: " # msg, null);
+  };
+};
+```
+
+## Common Issues
+
+### Insufficient Cycles
+
+**Problem:** `#InsufficientCyclesProvided` error
+
+**Solution:** Top up your canister with more cycles:
+
+```bash
+dfx canister --network ic deposit-cycles 10_000_000_000_000 OCBot
+```
+
+### Bot Already Registered
+
+**Problem:** `#AlreadyRegistered` error
+
+**Solution:** Your bot is already registered. The status should be `#Initialized`. If you need to reset, you must use a new canister.
+
+### Name Conflict
+
+**Problem:** Bot name is already taken
+
+**Solution:** Choose a different, unique bot name.
+
+## Next Steps
+
+Once your bot is initialized:
+
+<CardGroup cols={2}>
+  <Card title="Join Communities" icon="users" href="/guides/joining-communities">
+    Learn how to join groups and channels
+  </Card>
+  <Card title="Send Messages" icon="message" href="/guides/sending-messages">
+    Start sending messages to OpenChat
+  </Card>
+</CardGroup>

@@ -1,0 +1,164 @@
+---
+title: "Introduction"
+description: "A comprehensive Motoko SDK for building powerful OpenChat bots on the Internet Computer"
+icon: "book-open"
+---
+
+The OpenChat Bot SDK provides everything you need to build sophisticated bots for [OpenChat](https://oc.app), the decentralized chat platform on the Internet Computer. Whether you're tracking governance proposals, monitoring NNS activity, or building custom bot interactions, this SDK gives you the tools to succeed.
+
+## What is the OpenChat Bot SDK?
+
+The OpenChat Bot SDK is a Motoko-based framework that simplifies bot development for OpenChat. It provides:
+
+- **Ready-to-deploy bot implementations** (TallyBot and ProposalBot)
+- **Complete OpenChat API integration** for messaging, community management, and user interactions
+- **NNS governance integration** for proposal tracking and voting
+- **Robust infrastructure** including logging, error handling, and access control
+- **Production-ready patterns** for canister deployment and upgrade management
+
+## Key Capabilities
+
+<CardGroup cols={2}>
+  <Card title="Bot Registration" icon="user-plus">
+    Register your bot with OpenChat, configure avatars, and manage bot identity
+  </Card>
+  <Card title="Community Integration" icon="users">
+    Join groups, communities, and channels programmatically with invite code support
+  </Card>
+  <Card title="Messaging" icon="message">
+    Send and edit messages in groups, channels, and threads with full content type support
+  </Card>
+  <Card title="Governance Tracking" icon="landmark">
+    Monitor NNS proposals, track voting tallies, and broadcast updates in real-time
+  </Card>
+  <Card title="Access Control" icon="shield">
+    Custodian-based permissions system with comprehensive logging and metrics
+  </Card>
+  <Card title="Canister Management" icon="server">
+    Deploy, upgrade, and monitor your bot canisters on the Internet Computer
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+The SDK is organized into focused, composable modules:
+
+```
+backend/
+├── Bot/              # Core bot service and types
+│   ├── BotService.mo    # Bot registration, messaging, community management
+│   └── BotTypes.mo      # Bot state and interface types
+├── OC/               # OpenChat API integration
+│   ├── OCService.mo     # OpenChat service wrapper
+│   ├── OCTypes.mo       # OpenChat type definitions
+│   └── OCApi.mo         # Generated OpenChat API bindings (1700+ lines)
+├── Governance/       # NNS governance integration
+│   ├── GovernanceService.mo    # Governance canister client
+│   ├── GovernanceTypes.mo      # Proposal and neuron types
+│   └── GovernanceUtils.mo      # Governance helpers
+├── Proposal/         # Proposal processing
+│   ├── ProposalService.mo      # Proposal fetching and filtering
+│   ├── ProposalTypes.mo        # Proposal type definitions
+│   └── ProposalMappings.mo     # Type conversions
+├── TallyBot/         # TallyBot implementation
+│   ├── TallyBot.mo      # Tally tracking and subscription management
+│   ├── TallyBotMain.mo  # TallyBot canister entry point
+│   └── TallyTypes.mo    # Tally-specific types
+├── ProposalBot/      # ProposalBot implementation
+│   ├── ProposalBot.mo      # Proposal monitoring and broadcasting
+│   └── ProposalBotMain.mo  # ProposalBot canister entry point
+├── Log/              # Logging infrastructure
+│   ├── LogService.mo    # Structured logging service
+│   └── LogTypes.mo      # Log types and filters
+└── Utilities
+    ├── TextUtils.mo     # Message and proposal formatting
+    ├── TimeService.mo   # Time utilities and mocking
+    ├── Guards.mo        # Access control helpers
+    └── Types.mo         # Shared type definitions
+```
+
+## Use Cases
+
+### Governance Bots
+Track NNS proposals and broadcast voting updates to OpenChat communities. TallyBot monitors proposal tallies and posts updates as votes change, helping communities stay informed about governance activity.
+
+### Notification Bots
+Monitor blockchain events, proposal submissions, or custom triggers and notify OpenChat channels in real-time.
+
+### Custom Integrations
+Build bots that bridge OpenChat with other Internet Computer services, external APIs, or traditional web services.
+
+### Community Management
+Automate community tasks like welcoming new members, moderating content, or providing information on demand.
+
+## Technology Stack
+
+<CardGroup cols={3}>
+  <Card title="Motoko" icon="code">
+    Safe, simple language designed for the Internet Computer
+  </Card>
+  <Card title="Internet Computer" icon="globe">
+    Decentralized cloud platform with true ownership
+  </Card>
+  <Card title="OpenChat" icon="comments">
+    Fully on-chain, decentralized chat platform
+  </Card>
+  <Card title="Mops" icon="box">
+    On-chain package manager for Motoko dependencies
+  </Card>
+  <Card title="dfx" icon="terminal">
+    Internet Computer SDK for canister deployment
+  </Card>
+  <Card title="mo-dev" icon="arrows-rotate">
+    Live reload development server for rapid iteration
+  </Card>
+</CardGroup>
+
+## Why Use This SDK?
+
+**Production-Ready**: Both TallyBot and ProposalBot are deployed and running in production on OpenChat.
+
+**Type-Safe**: Written in Motoko with comprehensive type definitions for all OpenChat and NNS governance APIs.
+
+**Modular Design**: Use the entire SDK or cherry-pick components for your custom bot.
+
+**Well-Documented**: Extensive API documentation, guides, and real-world examples.
+
+**Battle-Tested**: Handles edge cases, upgrades, and error conditions that you'd discover only in production.
+
+## Getting Started
+
+Ready to build your first OpenChat bot? Follow our quickstart guide to get up and running in minutes:
+
+<Card
+  title="Quickstart Guide"
+  icon="rocket"
+  href="/quickstart"
+  horizontal
+>
+  Build and deploy your first OpenChat bot in under 10 minutes
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up your development environment with dfx and dependencies
+  </Card>
+  <Card title="Bot Architecture" icon="sitemap" href="/concepts/bot-architecture">
+    Understand the SDK's module structure and design patterns
+  </Card>
+  <Card title="TallyBot" icon="chart-bar" href="/bots/tally-bot">
+    Learn about the governance proposal tracking bot
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/bot-service">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+- **GitHub Repository**: [AleDema/OC-Sample-Bot](https://github.com/AleDema/OC-Sample-Bot)
+- **OpenChat**: Join the OpenChat platform at [oc.app](https://oc.app)
+- **Internet Computer Forum**: Get help from the IC community
+- **Motoko Documentation**: [Official Motoko docs](https://internetcomputer.org/docs/current/motoko/main/about-this-guide)

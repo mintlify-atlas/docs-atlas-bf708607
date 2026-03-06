@@ -1,0 +1,602 @@
+---
+title: 'ProposalBot'
+description: 'Monitor NNS governance proposals and automatically broadcast updates to OpenChat communities'
+---
+
+## Overview
+
+ProposalBot is a timer-based bot that continuously monitors the NNS (Network Nervous System) governance canister for new proposals and automatically broadcasts them to subscribed OpenChat groups and channels. It uses topic-based filtering to ensure subscribers only receive proposals relevant to their interests.
+
+### Key Features
+
+- **Automated monitoring**: Timer-based polling of NNS governance proposals
+- **Topic filtering**: Subscribe to specific proposal topics (RVM, SCM, etc.)
+- **Batch processing**: Groups related proposals (e.g., SCM with same git hash)
+- **Smart threading**: Creates proposal threads with links to NNS Proposal Group
+- **Message matching**: Links proposals to existing messages in NNS Group
+
+## How It Works
+
+ProposalBot runs on a configurable timer (default 5 minutes) that:
+
+1. **Fetches new proposals** from the NNS governance canister since the last check
+2. **Matches proposals** with existing messages in the NNS Proposal Group
+3. **Groups proposals** by type and git hash for batch updates
+4. **Sends notifications** to subscribed channels/groups based on topic filters
+5. **Creates threads** with links back to the original proposal messages
+
+<Note>
+  ProposalBot requires the timer to be initialized with `initTimer` before it starts monitoring proposals.
+</Note>
+
+## Architecture
+
+### Subscriber Type
+
+Subscribers define where and what proposal updates to receive:
+
+```motoko
+type Subscriber = {
+  #Group : {
+    topics : [Int32];      // Topic IDs to monitor
+    groupCanister : Text;  // Group canister ID
+  };
+  #Channel : {
+    topics : [Int32];          // Topic IDs to monitor
+    communityCanister : Text;  // Community canister ID
+    channelId : Nat;           // Channel ID within community
+  };
+};
+```
+
+### Proposal Topics
+
+Common NNS proposal topics:
+
+<ParamField body="topics" type="[Int32]">
+  - **13** - RVM (Replica Version Management)
+  - **8** - SCM (Subnet Canister Management)
+  - Other topics as defined by NNS governance
+</ParamField>
+
+### Internal State
+
+```motoko
+type ProposalBotModel = {
+  var lastProposalId : ?Nat64;         // Last processed proposal
+  var timerId : ?Nat;                  // Active timer ID
+  var latestNNSMessageIndex : ?Nat32;  // Latest message in NNS Group
+  proposalsLookup : Map<Nat64, Proposal>; // Pending proposals
+  var numberOfTicksSinceUpdate : Nat;  // Ticks since last SCM batch
+  subscribers : Map<Text, Subscriber>; // Active subscriptions
+};
+```
+
+## Getting Started
+
+<Steps>
+  <Step title="Initialize the bot">
+    Register your canister as an OpenChat bot:
+    
+    ```bash
+    dfx canister call OCBot initBot '("proposal_bot", opt "Proposal Bot")' --network ic
+    ```
+  </Step>
+  
+  <Step title="Join target communities">
+    Add the bot to communities where it will post updates:
+    
+    <CodeGroup>
+    ```bash Community
+    dfx canister call OCBot tryJoinCommunity '(
+      "community_canister_id", 
+      null
+    )' --network ic
+    ```
+    
+    ```bash Channel
+    # Join specific channel after joining community
+    dfx canister call OCBot tryJoinChannel '(
+      "community_canister_id",
+      42,
+      null
+    )' --network ic
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Add subscribers">
+    Subscribe channels or groups with topic filters:
+    
+    <CodeGroup>
+    ```bash Channel (RVM + SCM)
+    dfx canister call OCBot addSubscriber '(
+      variant { 
+        Channel = record {
+          topics = vec { 13; 8 };  # RVM and SCM topics
+          communityCanister = "community_canister_id";
+          channelId = 42
+        }
+      },
+      null  # No invite code
+    )' --network ic
+    ```
+    
+    ```bash Group (RVM only)
+    dfx canister call OCBot addSubscriber '(
+      variant { 
+        Group = record {
+          topics = vec { 13 };  # RVM topic only
+          groupCanister = "group_canister_id"
+        }
+      },
+      null
+    )' --network ic
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Start the timer">
+    Initialize the timer to begin automatic monitoring:
+    
+    ```bash
+    # Use default interval (5 minutes)
+    dfx canister call OCBot initTimer '(null)' --network ic
+    
+    # Use custom interval (10 minutes)
+    dfx canister call OCBot initTimer '(opt 600)' --network ic
+    ```
+  </Step>
+</Steps>
+
+## API Reference
+
+### initTimer
+
+Starts the recurring timer that monitors for new proposals.
+
+<ParamField body="tickrateInSeconds" type="?Nat">
+  Timer interval in seconds. Default: 300 (5 minutes)
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+```bash
+# Default 5 minute interval
+dfx canister call OCBot initTimer '(null)' --network ic
+
+# Custom 10 minute interval
+dfx canister call OCBot initTimer '(opt 600)' --network ic
+```
+
+### cancelTimer
+
+Stops the automatic proposal monitoring.
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+```bash
+dfx canister call OCBot cancelTimer '()' --network ic
+```
+
+### update
+
+Manually triggers a proposal update cycle (useful for testing).
+
+<ParamField body="start" type="?Nat64">
+  Optional proposal ID to start from. If null, continues from last processed proposal.
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `async ()`
+
+```bash
+# Update from last position
+dfx canister call OCBot update '(null)' --network ic
+
+# Update from specific proposal ID
+dfx canister call OCBot update '(opt 123456)' --network ic
+```
+
+### addSubscriber
+
+Adds a new subscriber for proposal updates.
+
+<ParamField body="sub" type="Subscriber" required>
+  Subscriber configuration with topics and destination
+</ParamField>
+
+<ParamField body="inviteCode" type="?Nat64">
+  Optional invite code if joining private group/channel
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+<CodeGroup>
+```bash Channel Subscriber
+dfx canister call OCBot addSubscriber '(
+  variant { 
+    Channel = record {
+      topics = vec { 13; 8 };  # RVM and SCM
+      communityCanister = "xyz...";
+      channelId = 42
+    }
+  },
+  null
+)' --network ic
+```
+
+```bash Group Subscriber
+dfx canister call OCBot addSubscriber '(
+  variant { 
+    Group = record {
+      topics = vec { 13 };  # RVM only
+      groupCanister = "abc..."
+    }
+  },
+  opt 123456  # With invite code
+)' --network ic
+```
+</CodeGroup>
+
+### updateSubscriber
+
+Updates the topic filter for an existing subscriber.
+
+<ParamField body="id" type="Text" required>
+  Subscriber ID (group canister ID or channel ID as text)
+</ParamField>
+
+<ParamField body="newTopics" type="[Int32]" required>
+  New array of topic IDs to subscribe to
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+```bash
+# Update to monitor both RVM and SCM
+dfx canister call OCBot updateSubscriber '(
+  "group_canister_id",
+  vec { 13; 8 }
+)' --network ic
+
+# Update to monitor RVM only
+dfx canister call OCBot updateSubscriber '(
+  "42",  # Channel ID as text
+  vec { 13 }
+)' --network ic
+```
+
+### deleteSubscriber
+
+Removes a subscriber from receiving updates.
+
+<ParamField body="id" type="Text" required>
+  Subscriber ID to remove
+</ParamField>
+
+**Authorization**: Custodians only
+
+**Returns**: `Result<(), Text>`
+
+```bash
+dfx canister call OCBot deleteSubscriber '("group_canister_id")' --network ic
+```
+
+### getSubscribers
+
+Retrieves all active subscribers.
+
+**Returns**: `[Subscriber]`
+
+```bash
+dfx canister call OCBot getSubscribers '()' --network ic
+```
+
+## Update Mechanism
+
+### Proposal Lifecycle
+
+1. **Discovery**: Timer triggers `update()` which fetches new proposals from NNS
+2. **Mapping**: Proposals are added to `proposalsLookup` map
+3. **Matching**: Bot matches proposals with messages in NNS Proposal Group
+4. **Batching**: Related proposals are grouped (SCM proposals with same git hash)
+5. **Broadcasting**: Messages sent to subscribers based on topic filters
+6. **Cleanup**: Processed proposals removed from lookup map
+
+### Batch Logic for SCM Proposals
+
+SCM (Subnet Canister Management) proposals are intelligently batched:
+
+```motoko
+// Proposals with the same git hash are grouped together
+let proposalHash = extractGitHash(title, description);
+
+// Send batch when:
+// - 10+ proposals with same hash accumulated (PENDING_SCM_LIMIT)
+// - OR 3+ update cycles without new proposals (MAX_TICKS_WITHOUT_UPDATE)
+```
+
+<Card title="Batch Strategy" icon="layer-group">
+  **Separate proposals**: Non-batched, separate build process detected
+  
+  **Batch proposals**: Same git hash, sent in groups of up to 10
+  
+  **Wait for quiet**: Waits 3 timer cycles (15 min default) for more proposals
+</Card>
+
+### Message Matching
+
+ProposalBot efficiently matches proposals with existing messages:
+
+```motoko
+func matchProposalsWithMessages(
+  groupId : Text, 
+  pending : ProposalsLookup
+) : async* Result<(), Text>
+```
+
+- Scans NNS Proposal Group in batches of 100 messages
+- Extracts proposal IDs from message content
+- Updates `proposalsLookup` with message indexes
+- Stops when all proposals matched or reaches last processed index
+
+## Message Formatting
+
+### Single Proposal Thread
+
+```
+[Proposal Header with details]
+
+→ Thread Reply:
+"View in NNS Proposals Group: [link to message]"
+```
+
+### Batch Proposal Thread
+
+```
+[Batch header with multiple proposals]
+Proposal 123: Title
+Proposal 124: Title
+Proposal 125: Title
+...
+
+→ Thread Reply:
+"Proposal 123: [link]
+Proposal 124: [link]
+Proposal 125: [link]"
+```
+
+## Testing and Debugging
+
+### Manual Update
+
+Trigger an update cycle manually:
+
+```bash
+# Start from last position
+dfx canister call OCBot update '(null)' --network ic
+
+# Start from specific proposal
+dfx canister call OCBot update '(opt 123000)' --network ic
+```
+
+### Check State
+
+<CodeGroup>
+```bash Last Proposal ID
+dfx canister call OCBot testGetLastProposalId '()' --network ic
+```
+
+```bash Latest NNS Message Index
+dfx canister call OCBot testGetLatestNNSMessageIndex '()' --network ic
+```
+
+```bash Set Last Proposal (Testing)
+dfx canister call OCBot testSetLastProposalId '(123456)' --network ic
+```
+</CodeGroup>
+
+### Reset State
+
+Clear internal state for testing:
+
+```bash
+# Clear proposals lookup and message index
+dfx canister call OCBot testResetState '()' --network ic
+```
+
+## Configuration
+
+### Constants
+
+```motoko
+let FIND_PROPOSALS_BATCH_SIZE : Nat32 = 100;    // Messages per batch
+let PENDING_SCM_LIMIT = 10;                      // Proposals per SCM batch
+let MAX_TICKS_WITHOUT_UPDATE = 3;                // Wait for quiet period
+let NNS_PROPOSAL_GROUP_ID = "labxu-baaaa-aaaaf-anb4q-cai";
+let GOVERNANCE_ID = "rrkah-fqaaa-aaaaa-aaaaq-cai"; // NNS Governance
+```
+
+### Topic Filtering
+
+Proposals are filtered using topic IDs:
+
+```motoko
+// Exclude topics 8 (SCM) and 13 (RVM) from generic processing
+let topics = processIncludeTopics(NNSFunctions, [8, 13]);
+
+let res = await* proposalService.listProposalsAfterId(
+  GOVERNANCE_ID, 
+  after, 
+  {
+    excludeTopic = topics;
+    omitLargeFields = ?false;
+  }
+);
+```
+
+## Best Practices
+
+<Card title="Timer Configuration" icon="clock">
+  - **Default (5 min)**: Good balance for most use cases
+  - **Shorter intervals**: Use for time-sensitive communities
+  - **Longer intervals**: Reduce costs for less active communities
+  - Remember: Shorter intervals = higher cycle costs
+</Card>
+
+<Card title="Topic Selection" icon="filter">
+  - Only subscribe to relevant topics to reduce noise
+  - RVM (13) and SCM (8) are the most common
+  - Test with a single topic before adding more
+  - Consider creating separate channels for different topics
+</Card>
+
+<Card title="Performance" icon="gauge">
+  - Bot uses efficient batch lookups (100 messages at a time)
+  - SCM proposals batched to reduce message spam
+  - Maintains state to avoid reprocessing proposals
+  - Uses "wait for quiet" logic for optimal batching
+</Card>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Timer not starting">
+    Common issues:
+    
+    ```bash
+    # Check if timer already exists
+    dfx canister call OCBot initTimer '(null)' --network ic
+    # Error: "Timer already created"
+    
+    # Solution: Cancel existing timer first
+    dfx canister call OCBot cancelTimer '()' --network ic
+    dfx canister call OCBot initTimer '(null)' --network ic
+    ```
+  </Accordion>
+  
+  <Accordion title="No proposals appearing">
+    Debugging steps:
+    
+    1. Check last processed proposal:
+    ```bash
+    dfx canister call OCBot testGetLastProposalId '()' --network ic
+    ```
+    
+    2. Manually trigger update:
+    ```bash
+    dfx canister call OCBot update '(null)' --network ic
+    ```
+    
+    3. Check subscriber list:
+    ```bash
+    dfx canister call OCBot getSubscribers '()' --network ic
+    ```
+    
+    4. Verify topics in subscriber match proposal topics
+  </Accordion>
+  
+  <Accordion title="addSubscriber returns error">
+    **"Subscriber already exists"**: Delete first, then re-add
+    
+    ```bash
+    dfx canister call OCBot deleteSubscriber '("subscriber_id")' --network ic
+    dfx canister call OCBot addSubscriber '(...)' --network ic
+    ```
+    
+    **Join errors**: Ensure bot has access to the group/channel and invite code is correct
+  </Accordion>
+  
+  <Accordion title="Proposals not batching correctly">
+    SCM batching requires:
+    
+    1. Proposals must have the same git hash in description
+    2. Either 10+ proposals accumulated OR 3 timer ticks elapsed
+    3. Check logs for batching activity
+    
+    ```bash
+    dfx canister call OCBot getLogs '(null)' --network ic
+    ```
+  </Accordion>
+  
+  <Accordion title="High cycle consumption">
+    Optimize cycle usage:
+    
+    - Increase timer interval: `initTimer(opt 600)` for 10 minutes
+    - Reduce number of subscribers
+    - Limit topics per subscriber
+    - Check for stuck proposals in lookup map
+    
+    ```bash
+    # Clear stuck state if needed
+    dfx canister call OCBot testResetState '()' --network ic
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Features
+
+### Post-Upgrade Timer Restoration
+
+The timer automatically restarts after canister upgrades:
+
+```motoko
+system func postupgrade() {
+  if (Option.isSome(proposalBotData.timerId)) {
+    proposalBotData.timerId := ?Timer.recurringTimer<system>(
+      #seconds(5 * 60), 
+      func() : async () {
+        await proposalBot.update(proposalBotData.lastProposalId);
+      }
+    );
+  }
+};
+```
+
+### Reentrancy Protection
+
+Update cycles are protected from concurrent execution:
+
+```motoko
+var updateState : UpdateState = #Stopped;
+
+public func update(after : ?Nat64) : async () {
+  if (updateState == #Running) {
+    logService.logWarn("Update already running");
+    return;
+  };
+  updateState := #Running;
+  // ... perform update ...
+  updateState := #Stopped;
+};
+```
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="TallyBot" icon="chart-bar" href="/bots/tally-bot">
+    Track neuron votes on proposals
+  </Card>
+  
+  <Card title="Bot Service" icon="robot" href="/core/bot-service">
+    Core bot functionality and OpenChat integration
+  </Card>
+  
+  <Card title="Governance Service" icon="landmark" href="/core/governance-service">
+    NNS governance canister integration
+  </Card>
+  
+  <Card title="Getting Started" icon="rocket" href="/getting-started">
+    Set up your first OpenChat bot
+  </Card>
+</CardGroup>

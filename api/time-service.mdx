@@ -1,0 +1,358 @@
+---
+title: 'TimeService'
+description: 'Time utilities and mock time service for testing'
+icon: 'clock'
+---
+
+## Overview
+
+The TimeService module provides time-related functionality for your OpenChat bot. It includes a `TimeServiceMock` class for testing time-dependent code by allowing you to control and advance time manually.
+
+## Types
+
+### TimeService
+
+Interface for time service implementations.
+
+```motoko
+public type TimeService = {
+    now : () -> Int;
+};
+```
+
+**Properties**
+- `now`: Function that returns the current time in nanoseconds since epoch
+
+## TimeServiceMock Class
+
+A mock implementation of TimeService for testing purposes. It allows you to freeze time and advance it manually.
+
+### Constructor
+
+Creates a new TimeServiceMock instance.
+
+```motoko
+public class TimeServiceMock()
+```
+
+**Example**
+
+```motoko
+import TimeService "./backend/TimeService";
+
+let timeMock = TimeService.TimeServiceMock();
+```
+
+## Methods
+
+### now
+
+Returns the current mocked time.
+
+```motoko
+public func now() : Int
+```
+
+<ResponseField name="return" type="Int">
+  Current time in nanoseconds since epoch. On first call, initializes to actual system time and freezes. Subsequent calls return the frozen time.
+</ResponseField>
+
+**Behavior**
+- **First call**: Initializes to actual system time (`Time.now()`) and freezes
+- **Subsequent calls**: Returns the frozen time value
+
+**Example**
+
+```motoko
+import TimeService "./backend/TimeService";
+import Debug "mo:base/Debug";
+
+let timeMock = TimeService.TimeServiceMock();
+
+let time1 = timeMock.now();  // Gets current time and freezes it
+Debug.print("Time 1: " # Int.toText(time1));
+
+let time2 = timeMock.now();  // Returns same frozen time
+Debug.print("Time 2: " # Int.toText(time2));
+// time1 == time2 (time is frozen)
+```
+
+### advance
+
+Advances the mocked time by a specified amount.
+
+```motoko
+public func advance(by : Int) : ()
+```
+
+<ParamField path="by" type="Int" required>
+  Amount to advance time in nanoseconds
+</ParamField>
+
+**Example**
+
+```motoko
+import TimeService "./backend/TimeService";
+
+let timeMock = TimeService.TimeServiceMock();
+
+let startTime = timeMock.now();
+// Advance by 1 hour (in nanoseconds)
+timeMock.advance(3_600_000_000_000);
+let newTime = timeMock.now();
+
+// newTime == startTime + 3_600_000_000_000
+```
+
+### reset
+
+Resets the mocked time to the current system time.
+
+```motoko
+public func reset() : ()
+```
+
+**Example**
+
+```motoko
+import TimeService "./backend/TimeService";
+
+let timeMock = TimeService.TimeServiceMock();
+
+let time1 = timeMock.now();
+timeMock.advance(1_000_000_000);  // Advance by 1 second
+
+let time2 = timeMock.now();
+// time2 == time1 + 1_000_000_000
+
+timeMock.reset();  // Reset to current system time
+let time3 = timeMock.now();
+// time3 is current system time (likely much greater than time2)
+```
+
+## Time Constants
+
+For working with time in Motoko, here are useful conversion constants:
+
+```motoko
+// Nanoseconds conversions
+let ONE_SECOND = 1_000_000_000;           // 1 second
+let ONE_MINUTE = 60_000_000_000;          // 1 minute
+let ONE_HOUR = 3_600_000_000_000;         // 1 hour
+let ONE_DAY = 86_400_000_000_000;         // 1 day
+let ONE_WEEK = 604_800_000_000_000;       // 1 week
+
+// Seconds to nanoseconds
+let secondsToNano = func(s : Int) : Int { s * 1_000_000_000 };
+
+// Nanoseconds to seconds
+let nanoToSeconds = func(ns : Int) : Int { ns / 1_000_000_000 };
+```
+
+## Testing Example
+
+```motoko
+import TimeService "./backend/TimeService";
+import Time "mo:base/Time";
+import Debug "mo:base/Debug";
+
+actor TimeServiceTest {
+    let timeMock = TimeService.TimeServiceMock();
+
+    // Test function that depends on time
+    public func testTimeBasedLogic() : async Bool {
+        let startTime = timeMock.now();
+        
+        // Simulate waiting 5 minutes
+        timeMock.advance(5 * 60_000_000_000);
+        
+        let endTime = timeMock.now();
+        let elapsed = endTime - startTime;
+        
+        // Check if 5 minutes elapsed
+        elapsed == 300_000_000_000  // 5 minutes in nanoseconds
+    };
+
+    // Test timeout scenarios
+    public func testTimeout() : async Bool {
+        let deadline = timeMock.now() + 3_600_000_000_000;  // 1 hour from now
+        
+        // Simulate passing 30 minutes
+        timeMock.advance(30 * 60_000_000_000);
+        
+        if (timeMock.now() < deadline) {
+            Debug.print("Still within deadline");
+            return true;
+        };
+        
+        false
+    };
+
+    // Reset time between tests
+    public func resetTestTime() : async () {
+        timeMock.reset();
+    };
+}
+```
+
+## Integration with DateTime
+
+Combine TimeService with the `mo:datetime` library for formatted timestamps:
+
+```motoko
+import TimeService "./backend/TimeService";
+import DateTime "mo:datetime/DateTime";
+
+let timeMock = TimeService.TimeServiceMock();
+
+// Get current time
+let currentTime = timeMock.now();
+
+// Create DateTime object
+let dt = DateTime.DateTime(currentTime);
+
+// Format as string
+let formatted = DateTime.toTextAdvanced(
+    dt,
+    #custom({ format = "YYYY-MM-DD HH:mm:ss"; locale = null })
+);
+// Example output: "2026-03-06 14:30:45"
+```
+
+## Production Usage
+
+For production code, use `Time.now()` directly instead of TimeServiceMock:
+
+```motoko
+import Time "mo:base/Time";
+
+actor ProductionBot {
+    // Use system time in production
+    public func getCurrentTimestamp() : async Int {
+        Time.now()
+    };
+
+    // Check if time has elapsed
+    public func hasElapsed(startTime : Int, duration : Int) : Bool {
+        Time.now() >= startTime + duration
+    };
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use TimeServiceMock for testing">
+    Always use TimeServiceMock in your test suites to make tests deterministic:
+    ```motoko
+    // Test code
+    let timeMock = TimeService.TimeServiceMock();
+    let startTime = timeMock.now();
+    
+    // Advance time to test expiration logic
+    timeMock.advance(86_400_000_000_000);  // Add 24 hours
+    
+    // Production code
+    let realTime = Time.now();
+    ```
+  </Accordion>
+
+  <Accordion title="Initialize before use">
+    Call `now()` once before using `advance()` to initialize the mock:
+    ```motoko
+    let timeMock = TimeService.TimeServiceMock();
+    let _ = timeMock.now();  // Initialize
+    timeMock.advance(1_000_000_000);  // Now you can advance
+    ```
+  </Accordion>
+
+  <Accordion title="Reset between tests">
+    Always reset the mock time between test cases:
+    ```motoko
+    // Test 1
+    let time1 = timeMock.now();
+    // ... test logic ...
+    
+    // Reset for Test 2
+    timeMock.reset();
+    let time2 = timeMock.now();
+    // ... test logic ...
+    ```
+  </Accordion>
+
+  <Accordion title="Use nanosecond precision">
+    Motoko's Time module uses nanoseconds since epoch (not milliseconds):
+    ```motoko
+    // Correct - nanoseconds
+    timeMock.advance(1_000_000_000);  // 1 second
+    
+    // Incorrect - this is only 1 nanosecond
+    timeMock.advance(1);
+    
+    // Convert from seconds
+    let seconds = 60;
+    timeMock.advance(seconds * 1_000_000_000);
+    ```
+  </Accordion>
+
+  <Accordion title="Inject time service for testability">
+    Design your actors to accept a time service for easier testing:
+    ```motoko
+    public class MyService(timeService : TimeService) {
+        public func checkExpiration(deadline : Int) : Bool {
+            timeService.now() > deadline
+        };
+    };
+    
+    // Production
+    let prodService = MyService({ now = Time.now });
+    
+    // Testing
+    let mockTime = TimeService.TimeServiceMock();
+    let testService = MyService(mockTime);
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Common Patterns
+
+### Testing Time Windows
+
+```motoko
+import TimeService "./backend/TimeService";
+
+let timeMock = TimeService.TimeServiceMock();
+
+// Test a 1-hour window
+let windowStart = timeMock.now();
+let windowEnd = windowStart + 3_600_000_000_000;
+
+// Advance to middle of window
+timeMock.advance(1_800_000_000_000);  // 30 minutes
+assert(timeMock.now() < windowEnd);
+
+// Advance past window
+timeMock.advance(1_800_000_000_000);  // Another 30 minutes
+assert(timeMock.now() >= windowEnd);
+```
+
+### Testing Periodic Tasks
+
+```motoko
+import TimeService "./backend/TimeService";
+
+let timeMock = TimeService.TimeServiceMock();
+let interval = 3_600_000_000_000;  // 1 hour
+var lastRun = timeMock.now();
+
+// Simulate multiple intervals
+for (i in Iter.range(0, 4)) {
+    timeMock.advance(interval);
+    let currentTime = timeMock.now();
+    
+    if (currentTime >= lastRun + interval) {
+        // Execute periodic task
+        lastRun := currentTime;
+    };
+};
+```

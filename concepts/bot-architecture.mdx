@@ -1,0 +1,284 @@
+---
+title: 'Bot Architecture'
+description: 'Understanding the module structure and design patterns of the OpenChat Bot SDK'
+---
+
+## Module Structure
+
+The OpenChat Bot SDK is organized into several core modules that work together to provide bot functionality:
+
+<CardGroup cols={2}>
+  <Card title="Bot/" icon="robot">
+    Core bot functionality including registration, initialization, and message handling
+  </Card>
+  <Card title="OC/" icon="comments">
+    OpenChat API integration for interacting with groups, channels, and communities
+  </Card>
+  <Card title="Governance/" icon="gavel">
+    NNS and SNS governance canister integration for proposal tracking
+  </Card>
+  <Card title="Proposal/" icon="file-lines">
+    Proposal management and formatting utilities
+  </Card>
+  <Card title="TallyBot/" icon="chart-bar">
+    Tally tracking and voting statistics bot implementation
+  </Card>
+  <Card title="ProposalBot/" icon="bell">
+    Automated proposal notification bot implementation
+  </Card>
+  <Card title="Log/" icon="scroll">
+    Logging and debugging utilities
+  </Card>
+  <Card title="Guards" icon="shield">
+    Access control and authorization
+  </Card>
+</CardGroup>
+
+## BotService: The Foundation
+
+The `BotService` module (located in `backend/Bot/BotService.mo`) provides the core functionality for all bot implementations:
+
+```motoko
+public class BotServiceImpl(
+  botModel : BT.BotModel, 
+  ocService : OC.OCService, 
+  logService : LT.LogService
+)
+```
+
+### Key Features
+
+<Accordion title="Bot Registration and Initialization">
+  The `initBot()` method handles OpenChat bot registration:
+  
+  ```motoko
+  public func initBot<system>(name : Text, _displayName : ?Text) : async Result.Result<(), Text>
+  ```
+  
+  - Requires 10 XDR (10 trillion cycles) as registration fee
+  - Registers with the User Index Canister (`4bkt6-4aaaa-aaaaf-aaaiq-cai`)
+  - Updates bot status from `#NotInitialized` → `#Initializing` → `#Initialized`
+</Accordion>
+
+<Accordion title="Group and Community Management">
+  BotService provides methods for joining groups and communities:
+  
+  - `joinGroup()`: Join public or private groups with optional invite codes
+  - `joinCommunity()`: Join communities on OpenChat
+  - `joinChannel()`: Join specific channels within a community
+  
+  Each method handles local user index lookup and proper authorization.
+</Accordion>
+
+<Accordion title="Message Operations">
+  Comprehensive message handling capabilities:
+  
+  - `sendGroupMessage()`: Send messages to groups
+  - `sendChannelMessage()`: Send messages to community channels
+  - `editGroupMessage()` / `editChannelMessage()`: Edit existing messages
+  - `getGroupMessagesByIndex()`: Retrieve messages by index
+  - `getLatestGroupMessageIndex()`: Get the latest message index
+</Accordion>
+
+<Accordion title="Message ID Management">
+  Built-in message tracking system:
+  
+  ```motoko
+  savedMessages : Map.Map<Text, OCApi.MessageId>
+  ```
+  
+  Methods:
+  - `saveMessageId()`: Store message ID with a key
+  - `getMessageId()`: Retrieve stored message ID
+  - `deleteMessageId()`: Remove specific message ID
+  - `deleteAllMessageIds()`: Clear all stored message IDs
+</Accordion>
+
+## Stable Variables Pattern
+
+The SDK uses Motoko's stable variable pattern to preserve state across canister upgrades:
+
+```motoko
+stable let botData = BS.initModel();
+stable let logs = LS.initLogModel();
+stable let tallyModel = TallyBot.initTallyModel();
+```
+
+### BotModel Structure
+
+```motoko
+public type BotModel = {
+  groups : Map.Map<Text, ()>;
+  savedMessages : Map.Map<Text, OCApi.MessageId>;
+  var botStatus : BotStatus;
+  var botName : ?Text;
+  var botDisplayName : ?Text;
+};
+```
+
+<Note>
+  The stable keyword ensures that these data structures persist when the canister is upgraded, preventing data loss during updates.
+</Note>
+
+## Access Control with Guards
+
+The `Guards` module (`backend/Guards.mo`) provides custodian-based access control:
+
+```motoko
+public func isCustodian(caller : Principal, custodians : List.List<Principal>) : Bool
+```
+
+### Usage Pattern
+
+```motoko
+public shared({ caller }) func adminFunction() : async Result.Result<(), Text> {
+  if (not G.isCustodian(caller, custodians)) {
+    return #err("Not authorized: " # Principal.toText(caller));
+  };
+  // Admin logic here
+};
+```
+
+<CardGroup cols={2}>
+  <Card title="Custodians" icon="user-shield">
+    List of principals with administrative access to the bot
+  </Card>
+  <Card title="Notifiers" icon="bell">
+    Separate list for principals authorized to send updates (used in TallyBot)
+  </Card>
+</CardGroup>
+
+### Guard Functions
+
+- `isAnonymous()`: Check if caller is the anonymous principal
+- `isCanisterPrincipal()`: Validate that a principal is a canister (ends with `-cai`)
+- `isCustodian()`: Verify custodian access
+
+## Logging and Metrics
+
+The `LogService` module provides structured logging with different severity levels:
+
+```motoko
+public class LogServiceImpl(
+  logModel : LT.LogModel, 
+  maxLogSize : Nat, 
+  isDebug : Bool
+)
+```
+
+### Log Levels
+
+```motoko
+public type LogLevel = {
+  #Error;
+  #Warn;
+  #Info;
+};
+```
+
+### Usage
+
+```motoko
+logService.logInfo("Bot initialized successfully", null);
+logService.logWarn("Rate limit approaching", ?"[sendMessage]");
+logService.logError("Failed to send message", ?"GroupID: abc123");
+```
+
+### Log Structure
+
+```motoko
+public type Log = {
+  timestamp : Time.Time;
+  level : LogLevel;
+  message : Text;
+  context : ?Text;
+};
+```
+
+<Note>
+  Logs are stored in a circular buffer with a configurable max size (default: 100 entries) to prevent memory overflow.
+</Note>
+
+## Architecture Patterns
+
+### Service-Oriented Design
+
+Each major feature is encapsulated in its own service class:
+
+- **BotService**: Bot lifecycle and messaging
+- **OCService**: OpenChat API wrapper
+- **GovernanceService**: NNS/SNS governance interaction
+- **ProposalService**: Proposal data management
+- **LogService**: Logging functionality
+
+### Separation of Concerns
+
+```motoko
+// Main canister actor
+shared ({ caller }) actor class OCBot() = Self {
+  // Stable data models
+  stable let botData = BS.initModel();
+  stable let logs = LS.initLogModel();
+  
+  // Service instances
+  let ocService = OCS.OCServiceImpl();
+  let logService = LS.LogServiceImpl(logs, 100, true);
+  let botService = BS.BotServiceImpl(botData, ocService, logService);
+};
+```
+
+### Dependency Injection
+
+Services receive their dependencies through constructor injection:
+
+```motoko
+let botService = BS.BotServiceImpl(
+  botData,      // Data model
+  ocService,    // External API service
+  logService    // Logging service
+);
+```
+
+This pattern enables:
+- **Testability**: Easy to mock dependencies
+- **Modularity**: Services can be used independently
+- **Maintainability**: Clear dependency relationships
+
+## Error Handling
+
+The SDK uses Motoko's `Result` type for error handling:
+
+```motoko
+public type Result<S, E> = {
+  #ok : S;
+  #err : E;
+};
+```
+
+### Pattern Usage
+
+```motoko
+let res = await* botService.sendTextGroupMessage(groupId, "Hello!", null);
+switch(res) {
+  case(#ok(response)) {
+    // Handle success
+    switch(response) {
+      case(#Success(data)) {
+        logService.logInfo("Message sent: " # Nat.toText(data.message_id), null);
+      };
+      case(#NotAuthorized) {
+        logService.logError("Not authorized to send message", null);
+      };
+      // ... other response variants
+    };
+  };
+  case(#err(msg)) {
+    // Handle error
+    logService.logError("Failed to send message: " # msg, null);
+  };
+};
+```
+
+<Card title="Best Practice" icon="lightbulb">
+  Always handle both `#ok` and `#err` cases when working with Result types to ensure robust error handling.
+</Card>
